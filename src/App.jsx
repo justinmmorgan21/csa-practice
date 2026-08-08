@@ -16,6 +16,7 @@ import {
   Loader2,
   Download,
   KeyRound,
+  LogOut,
 } from "lucide-react";
 
 // ===========================================================================
@@ -700,8 +701,9 @@ function StudentView({ course, section, roster }) {
           <p className="text-xs text-slate-400 font-mono">{unit ? unit.label : ""}{segment ? ` \u00b7 ${segment.label}` : ""}</p>
           <h2 className="text-xl font-semibold text-slate-800">{studentData.displayName}</h2>
         </div>
-        <button onClick={switchStudent} className="text-xs text-slate-400 hover:text-slate-600 font-mono">
-          switch student
+        <button onClick={switchStudent} title="Log out"
+          className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+          <LogOut size={13} /> Logout
         </button>
       </div>
 
