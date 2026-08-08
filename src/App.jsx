@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent } from "./storage";
+import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "./auth";
 import {
   CheckCircle2,
   XCircle,
@@ -814,7 +815,7 @@ function StudentView({ course, section, roster }) {
 // ---------------------------------------------------------------------------
 // Teacher dashboard
 // ---------------------------------------------------------------------------
-function TeacherView({ course, section, roster, onRosterChange }) {
+function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [students, setStudents] = useState({});
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
@@ -941,6 +942,10 @@ function TeacherView({ course, section, roster, onRosterChange }) {
           className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export all data
         </button>
+        <button onClick={onLock} title="Lock the Teacher tab"
+          className="ml-auto px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
+          <Lock size={14} /> Lock
+        </button>
       </div>
 
       {bulkMsg && <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 font-mono">{bulkMsg}</div>}
@@ -1061,10 +1066,89 @@ function TeacherView({ course, section, roster, onRosterChange }) {
 }
 
 // ---------------------------------------------------------------------------
+// Teacher password gate -- separate from student PINs, since this guards
+// roster management, unlocking, and data export. First-ever visit lets you
+// set the password; every visit after that requires it.
+// ---------------------------------------------------------------------------
+function TeacherGate({ onUnlock }) {
+  const [loading, setLoading] = useState(true);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [pw, setPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    loadTeacherPasswordHash().then((hash) => { setHasPassword(!!hash); setLoading(false); });
+  }, []);
+
+  const handleSetup = async () => {
+    if (pw.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (pw !== confirmPw) { setError("Passwords don't match."); return; }
+    setBusy(true);
+    await saveTeacherPasswordHash(await hashPassword(pw));
+    setBusy(false);
+    onUnlock();
+  };
+
+  const handleLogin = async () => {
+    setBusy(true);
+    const [inputHash, storedHash] = await Promise.all([hashPassword(pw), loadTeacherPasswordHash()]);
+    setBusy(false);
+    if (inputHash === storedHash) onUnlock();
+    else { setError("Incorrect password."); setPw(""); }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center mt-16 text-slate-400"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>;
+  }
+
+  return (
+    <div className="max-w-sm mx-auto mt-10 p-6 rounded-xl bg-white border border-slate-200">
+      {hasPassword ? (
+        <>
+          <p className="text-sm font-semibold text-slate-700 mb-1">Teacher access</p>
+          <p className="text-xs text-slate-400 mb-4 font-mono">Enter the teacher password</p>
+          <input type="password" value={pw} autoFocus
+            onChange={(e) => { setPw(e.target.value); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-3"
+            placeholder="Password" />
+          <button onClick={handleLogin} disabled={busy || !pw}
+            className="w-full px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+            {busy ? "Checking..." : "Unlock"}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-slate-700 mb-1">Set up teacher access</p>
+          <p className="text-xs text-slate-400 mb-4 font-mono">No password is set yet. Create one now (8+ characters) -- you'll enter this every time you open the Teacher tab.</p>
+          <input type="password" value={pw}
+            onChange={(e) => { setPw(e.target.value); setError(""); }}
+            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"
+            placeholder="New password" />
+          <input type="password" value={confirmPw}
+            onChange={(e) => { setConfirmPw(e.target.value); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleSetup()}
+            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-3"
+            placeholder="Confirm password" />
+          <button onClick={handleSetup} disabled={busy || !pw || !confirmPw}
+            className="w-full px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+            {busy ? "Saving..." : "Set password"}
+          </button>
+        </>
+      )}
+      {error && <p className="text-rose-600 text-xs mt-3 text-center">{error}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Root app
 // ---------------------------------------------------------------------------
 export default function App() {
   const [mode, setMode] = useState("student");
+  const [teacherAuthed, setTeacherAuthed] = useState(false);
   const [course, setCourse] = useState("csa");
   const [section, setSection] = useState(COURSES.csa.sections[0]);
   const [roster, setRoster] = useState([]);
@@ -1106,8 +1190,10 @@ export default function App() {
           <div className="flex items-center justify-center mt-16 text-slate-400"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>
         ) : mode === "student" ? (
           <StudentView course={course} section={section} roster={roster} />
+        ) : !teacherAuthed ? (
+          <TeacherGate onUnlock={() => setTeacherAuthed(true)} />
         ) : (
-          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} />
+          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} onLock={() => setTeacherAuthed(false)} />
         )}
       </div>
     </div>
