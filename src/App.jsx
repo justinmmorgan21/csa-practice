@@ -525,6 +525,8 @@ function StudentView({ course, section, roster }) {
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [roundResult, setRoundResult] = useState(null);
+  const [checkingFlag, setCheckingFlag] = useState(false);
+  const [stillFlagged, setStillFlagged] = useState(false);
 
   useEffect(() => { setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
 
@@ -556,6 +558,7 @@ function StudentView({ course, section, roster }) {
 
   const switchStudent = () => {
     setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
+    setCheckingFlag(false); setStillFlagged(false);
   };
 
   const startRound = () => {
@@ -624,6 +627,18 @@ function StudentView({ course, section, roster }) {
     const updated = { ...studentData, topic: next.topic, tier: TIER_ORDER[0] };
     setStudentData(updated);
     await saveStudent(course, section, slugify(updated.displayName), updated);
+  };
+
+  const checkFlagStatus = async () => {
+    setCheckingFlag(true);
+    setStillFlagged(false);
+    const fresh = await loadStudentRaw(course, section, slugify(studentData.displayName));
+    setCheckingFlag(false);
+    if (fresh && !fresh.flagged) {
+      setStudentData(fresh);
+    } else {
+      setStillFlagged(true);
+    }
   };
 
   if (!selectedName) {
@@ -727,6 +742,11 @@ function StudentView({ course, section, roster }) {
           <Flag className="mx-auto text-rose-600 mb-2" size={28} />
           <p className="font-semibold text-rose-800">Flagged for small-group help</p>
           <p className="text-sm text-rose-700 mt-1">You've missed this tier twice in a row. Sit tight -- your teacher will pull you for a quick small-group session.</p>
+          <button onClick={checkFlagStatus} disabled={checkingFlag}
+            className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors inline-flex items-center gap-2">
+            {checkingFlag ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />} Continue
+          </button>
+          {stillFlagged && <p className="text-rose-600 text-xs mt-3">Not yet -- your teacher hasn't cleared you for this tier.</p>}
         </div>
       )}
 
