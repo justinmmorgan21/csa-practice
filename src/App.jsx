@@ -999,7 +999,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
             const lockedNext = data.locked ? resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId) : null;
             return (
               <div key={name} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                <div className="flex items-center justify-between p-4">
+                <div className="flex items-center justify-between p-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-medium text-slate-800">{data.displayName}</span>
@@ -1025,10 +1025,12 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400">
-                      {data.history.length} attempts{acc !== null ? ` \u00b7 ${acc}% overall accuracy` : ""}
-                      {data.masteredTopics.length > 0 ? ` \u00b7 mastered: ${data.masteredTopics.join(", ")}` : ""}
-                    </p>
+                    {(acc !== null || data.masteredTopics.length > 0) && (
+                      <p className="text-xs text-slate-400">
+                        {acc !== null ? `${acc}% overall accuracy` : ""}
+                        {data.masteredTopics.length > 0 ? `${acc !== null ? " \u00b7 " : ""}mastered: ${data.masteredTopics.join(", ")}` : ""}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button onClick={() => regeneratePin(name)} title="Click to generate a new PIN"
