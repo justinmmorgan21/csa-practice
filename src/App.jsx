@@ -863,7 +863,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
       roster.map(async (name) => {
         const slug = slugify(name);
         let raw = await loadStudentRaw(course, section, slug);
-        if (!raw) raw = emptyStudent(name, course);
+        if (!raw) { raw = emptyStudent(name, course); await saveStudent(course, section, slug, raw); }
         else if (!raw.pin) { raw = ensurePin(raw); await saveStudent(course, section, slug, raw); }
         return [name, raw];
       })
