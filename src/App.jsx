@@ -875,7 +875,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                 <input type="checkbox" checked={row.include} onChange={(e) => updatePendingRow(i, { include: e.target.checked })} />
                 <input value={row.editedName} onChange={(e) => updatePendingRow(i, { editedName: e.target.value })}
                   className="flex-1 px-2 py-1 rounded border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                {row.idTag && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono shrink-0">ID \u2022{row.idTag}</span>}
+                {row.idTag && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono shrink-0">{`ID \u2022${row.idTag}`}</span>}
               </div>
             ))}
           </div>
@@ -926,7 +926,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                       <span className="font-medium text-slate-800">{data.displayName}</span>
                       {entry.idTag && (
                         <span title="Last 2 digits of student ID -- for your own disambiguation only, never shown to students" className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono">
-                          ID \u2022{entry.idTag}
+                          {`ID \u2022${entry.idTag}`}
                         </span>
                       )}
                       {data.locked ? (
