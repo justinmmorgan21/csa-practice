@@ -583,7 +583,7 @@ function StudentView({ course, section, roster }) {
             Current tier: <span className={`px-2 py-0.5 rounded border ${TIER_COLORS[studentData.tier]}`}>{TIER_LABELS[studentData.tier]}</span>
           </p>
           <button onClick={startRound} className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-            Start round <ChevronRight size={16} />
+            Start <ChevronRight size={16} />
           </button>
         </div>
       )}
