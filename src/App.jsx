@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent } from "./storage";
 import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "./auth";
+import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { ITEM_BANK } from "./items";
 import {
   CheckCircle2,
@@ -18,6 +19,8 @@ import {
   Download,
   KeyRound,
   LogOut,
+  FileUp,
+  X,
 } from "lucide-react";
 
 // ===========================================================================
@@ -144,6 +147,13 @@ function compareTuples(a, b) {
 function slugify(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40) || "student";
 }
+// A roster entry is { name, idTag }. idTag (last 2 digits of a student ID,
+// when known) guarantees a unique storage key even if two students share
+// the same abbreviated name -- without it, they'd silently overwrite each
+// other's saved progress. idTag itself is never shown to students.
+function rosterSlug(entry) {
+  return slugify(entry.idTag ? `${entry.name}_${entry.idTag}` : entry.name);
+}
 function sample(arr, n) {
   const pool = [...arr];
   const out = [];
@@ -158,12 +168,13 @@ function generatePin() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
-function emptyStudent(displayName, course) {
+function emptyStudent(displayName, course, idTag = null) {
   const firstUnit = (UNITS[course] || [])[0] || null;
   const firstSegment = firstUnit ? firstUnit.segments[0] : null;
   const firstTopic = firstSegment ? firstSegment.topics[0] : null;
   return {
     displayName,
+    idTag,
     pin: generatePin(),
     unitId: firstUnit ? firstUnit.id : null,
     segmentId: firstSegment ? firstSegment.id : null,
@@ -203,9 +214,10 @@ async function exportAllData() {
     for (const sectionId of COURSES[courseId].sections) {
       const roster = await loadRoster(courseId, sectionId);
       const students = {};
-      for (const name of roster) {
-        const data = await loadStudentRaw(courseId, sectionId, slugify(name));
-        students[name] = data || emptyStudent(name, courseId);
+      for (const entry of roster) {
+        const slug = rosterSlug(entry);
+        const data = await loadStudentRaw(courseId, sectionId, slug);
+        students[slug] = data || emptyStudent(entry.name, courseId, entry.idTag);
       }
       result.courses[courseId][sectionId] = { roster, students };
     }
@@ -347,17 +359,17 @@ function StudentView({ course, section, roster }) {
 
   useEffect(() => { setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
 
-  const selectStudent = useCallback(async (name) => {
-    setSelectedName(name);
+  const selectStudent = useCallback(async (entry) => {
+    setSelectedName(entry.name);
     setLoading(true);
     setUnlocked(false);
     setPinInput("");
     setPinError(false);
     setRound(null);
     setRoundResult(null);
-    const slug = slugify(name);
+    const slug = rosterSlug(entry);
     let data = await loadStudentRaw(course, section, slug);
-    if (!data) { data = emptyStudent(name, course); await saveStudent(course, section, slug, data); }
+    if (!data) { data = emptyStudent(entry.name, course, entry.idTag); await saveStudent(course, section, slug, data); }
     else if (!data.pin) { data = ensurePin(data); await saveStudent(course, section, slug, data); }
     setStudentData(data);
     setLoading(false);
@@ -436,7 +448,7 @@ function StudentView({ course, section, roster }) {
     }
 
     setStudentData(updated);
-    await saveStudent(course, section, slugify(updated.displayName), updated);
+    await saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
     setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked, masteredTopic: studentData.topic });
     setRound(null);
   };
@@ -444,7 +456,7 @@ function StudentView({ course, section, roster }) {
   const checkFlagStatus = async () => {
     setCheckingFlag(true);
     setStillFlagged(false);
-    const fresh = await loadStudentRaw(course, section, slugify(studentData.displayName));
+    const fresh = await loadStudentRaw(course, section, rosterSlug({ name: studentData.displayName, idTag: studentData.idTag }));
     setCheckingFlag(false);
     if (fresh && !fresh.flagged) {
       setStudentData(fresh);
@@ -461,10 +473,10 @@ function StudentView({ course, section, roster }) {
           <p className="text-slate-500 text-sm">No students on the roster for this section yet. Ask Mr. Morgan to add you from the Teacher tab.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {roster.map((name) => (
-              <button key={name} onClick={() => selectStudent(name)}
+            {roster.map((entry) => (
+              <button key={rosterSlug(entry)} onClick={() => selectStudent(entry)}
                 className="text-left px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
-                {name}
+                {entry.name}
               </button>
             ))}
           </div>
@@ -655,6 +667,9 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [loadErrors, setLoadErrors] = useState([]);
   const [bulkMsg, setBulkMsg] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [pendingRows, setPendingRows] = useState(null); // review-before-commit rows from a parsed PDF
+  const [parsingPdf, setParsingPdf] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -667,15 +682,70 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
     setExporting(false);
   };
 
+  // Roster PDF upload: parsing happens entirely client-side (see
+  // rosterParser.js). Full names/IDs are held only in pendingRows (React
+  // state, in-memory only) for this review step -- nothing is written to
+  // Firestore, logged, or persisted until "Add to roster" is clicked, and
+  // pendingRows is cleared immediately after.
+  const handleRosterFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset the input so the same file can be re-picked later
+    if (!file) return;
+    setUploadError("");
+    setParsingPdf(true);
+    try {
+      const text = await extractPdfText(file);
+      const rows = parseRosterText(text);
+      if (rows.length === 0) {
+        setUploadError("Couldn't find any names in that PDF. You can still add students manually below.");
+      } else {
+        const proposed = buildProposedRoster(rows);
+        setPendingRows(proposed.map((row) => ({
+          editedName: row.proposedName,
+          idTag: row.idTag,
+          include: true,
+        })));
+      }
+    } catch (err) {
+      setUploadError("Couldn't read that PDF. Make sure it's not a scanned image and try again.");
+    }
+    setParsingPdf(false);
+  };
+
+  const updatePendingRow = (index, patch) => {
+    setPendingRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const cancelPendingRoster = () => {
+    setPendingRows(null); // discards all parsed names/IDs immediately
+    setUploadError("");
+  };
+
+  const confirmPendingRoster = async () => {
+    const toAdd = pendingRows.filter((r) => r.include && r.editedName.trim());
+    let updatedRoster = [...roster];
+    for (const row of toAdd) {
+      const entry = { name: row.editedName.trim(), idTag: row.idTag };
+      const slug = rosterSlug(entry);
+      if (updatedRoster.some((e) => rosterSlug(e) === slug)) continue; // skip exact duplicates
+      updatedRoster.push(entry);
+      const fresh = emptyStudent(entry.name, course, entry.idTag);
+      await saveStudent(course, section, slug, fresh);
+    }
+    await saveRoster(course, section, updatedRoster);
+    onRosterChange(updatedRoster);
+    setPendingRows(null); // clear all parsed names/IDs from memory now that we're done
+  };
+
   const refresh = useCallback(async () => {
     setLoading(true);
     const entries = await Promise.all(
-      roster.map(async (name) => {
-        const slug = slugify(name);
+      roster.map(async (entry) => {
+        const slug = rosterSlug(entry);
         let raw = await loadStudentRaw(course, section, slug);
-        if (!raw) { raw = emptyStudent(name, course); await saveStudent(course, section, slug, raw); }
+        if (!raw) { raw = emptyStudent(entry.name, course, entry.idTag); await saveStudent(course, section, slug, raw); }
         else if (!raw.pin) { raw = ensurePin(raw); await saveStudent(course, section, slug, raw); }
-        return [name, raw];
+        return [slug, raw];
       })
     );
     setStudents(Object.fromEntries(entries));
@@ -687,70 +757,74 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
 
   const addStudent = async () => {
     const name = newName.trim();
-    if (!name || roster.includes(name)) return;
-    const updated = [...roster, name];
+    if (!name) return;
+    const entry = { name, idTag: null };
+    if (roster.some((e) => rosterSlug(e) === rosterSlug(entry))) return;
+    const updated = [...roster, entry];
     await saveRoster(course, section, updated);
     onRosterChange(updated);
     setNewName("");
   };
 
-  const removeStudent = async (name) => {
-    const updated = roster.filter((n) => n !== name);
+  const removeStudent = async (entry) => {
+    const slug = rosterSlug(entry);
+    const updated = roster.filter((e) => rosterSlug(e) !== slug);
     await saveRoster(course, section, updated);
     onRosterChange(updated);
-    await deleteStudent(course, section, slugify(name));
+    await deleteStudent(course, section, slug);
   };
 
-  const clearFlag = async (name) => {
-    const slug = slugify(name);
+  const clearFlag = async (entry) => {
+    const slug = rosterSlug(entry);
     const data = await loadStudentRaw(course, section, slug);
     if (!data) return;
     const updated = { ...data, flagged: false, misses: 0 };
     await saveStudent(course, section, slug, updated);
-    setStudents((s) => ({ ...s, [name]: updated }));
+    setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
-  const unlockStudent = async (name) => {
-    const slug = slugify(name);
+  const unlockStudent = async (entry) => {
+    const slug = rosterSlug(entry);
     const data = await loadStudentRaw(course, section, slug);
     if (!data || !data.locked) return;
     const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
     if (!next) return; // nothing to unlock into yet
     const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
     await saveStudent(course, section, slug, updated);
-    setStudents((s) => ({ ...s, [name]: updated }));
+    setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
   const unlockAllWaiting = async () => {
     let unlocked = 0, skipped = 0;
-    for (const name of roster) {
-      const data = students[name];
+    for (const entry of roster) {
+      const slug = rosterSlug(entry);
+      const data = students[slug];
       if (!data || !data.locked) continue;
       const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
       if (!next) { skipped++; continue; }
       const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
-      await saveStudent(course, section, slugify(name), updated);
-      setStudents((s) => ({ ...s, [name]: updated }));
+      await saveStudent(course, section, slug, updated);
+      setStudents((s) => ({ ...s, [slug]: updated }));
       unlocked++;
     }
     setBulkMsg(unlocked === 0 && skipped === 0 ? "No students are currently waiting."
       : `Unlocked ${unlocked} student${unlocked === 1 ? "" : "s"}.` + (skipped > 0 ? ` ${skipped} waiting but no further content is configured yet.` : ""));
   };
 
-  const resetStudent = async (name) => {
-    const slug = slugify(name);
-    const fresh = emptyStudent(name, course);
+  const resetStudent = async (entry) => {
+    const slug = rosterSlug(entry);
+    const fresh = emptyStudent(entry.name, course, entry.idTag);
     await saveStudent(course, section, slug, fresh);
-    setStudents((s) => ({ ...s, [name]: fresh }));
+    setStudents((s) => ({ ...s, [slug]: fresh }));
   };
 
-  const regeneratePin = async (name) => {
-    const slug = slugify(name);
+  const regeneratePin = async (entry) => {
+    const slug = rosterSlug(entry);
     const data = await loadStudentRaw(course, section, slug);
     if (!data) return;
     const updated = { ...data, pin: generatePin() };
     await saveStudent(course, section, slug, updated);
-    setStudents((s) => ({ ...s, [name]: updated }));
+    setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
   const anyWaiting = Object.values(students).some((d) => d && d.locked);
@@ -763,6 +837,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
         <button onClick={addStudent} className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors inline-flex items-center gap-1 text-sm">
           <Plus size={16} /> Add
         </button>
+        <label className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500 cursor-pointer">
+          {parsingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />} Upload roster PDF
+          <input type="file" accept="application/pdf" onChange={handleRosterFile} disabled={parsingPdf} className="hidden" />
+        </label>
         <button onClick={refresh} title="Refresh progress data" className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           <RotateCcw size={14} /> Refresh
         </button>
@@ -780,6 +858,38 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
         </button>
       </div>
 
+      {uploadError && <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 font-mono">{uploadError}</div>}
+
+      {pendingRows && (
+        <div className="mb-6 p-4 rounded-xl border border-indigo-200 bg-indigo-50">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-indigo-900">Review before adding ({pendingRows.filter((r) => r.include).length} selected)</p>
+            <button onClick={cancelPendingRoster} title="Discard without saving anything" className="text-slate-400 hover:text-slate-600">
+              <X size={18} />
+            </button>
+          </div>
+          <p className="text-xs text-indigo-700 mb-3">Nothing is saved yet. Edit any name below, uncheck anyone you don't want to add, then confirm.</p>
+          <div className="flex flex-col gap-1.5 mb-4 max-h-80 overflow-y-auto">
+            {pendingRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2">
+                <input type="checkbox" checked={row.include} onChange={(e) => updatePendingRow(i, { include: e.target.checked })} />
+                <input value={row.editedName} onChange={(e) => updatePendingRow(i, { editedName: e.target.value })}
+                  className="flex-1 px-2 py-1 rounded border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                {row.idTag && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono shrink-0">ID \u2022{row.idTag}</span>}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={confirmPendingRoster} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors text-sm">
+              Add {pendingRows.filter((r) => r.include).length} student{pendingRows.filter((r) => r.include).length === 1 ? "" : "s"} to roster
+            </button>
+            <button onClick={cancelPendingRoster} className="px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-sm text-slate-600">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {bulkMsg && <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 font-mono">{bulkMsg}</div>}
       {loadErrors.length > 0 && (
         <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 font-mono">
@@ -793,26 +903,32 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
         <p className="text-slate-400 text-sm text-center py-10 font-mono">No students in this section yet -- add one above.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {[...roster].sort((nameA, nameB) => {
-            const a = students[nameA], b = students[nameB];
+          {[...roster].sort((entryA, entryB) => {
+            const a = students[rosterSlug(entryA)], b = students[rosterSlug(entryB)];
             if (!a || !b) return 0;
             const flagDiff = (a.flagged ? 0 : 1) - (b.flagged ? 0 : 1);
             if (flagDiff !== 0) return flagDiff;
             return compareTuples(positionTuple(course, a), positionTuple(course, b));
-          }).map((name) => {
-            const data = students[name];
+          }).map((entry) => {
+            const slug = rosterSlug(entry);
+            const data = students[slug];
             if (!data) return null;
             const acc = accuracy(data.history);
-            const isOpen = expanded === name;
+            const isOpen = expanded === slug;
             const unit = data.unitId ? getUnit(course, data.unitId) : null;
             const segment = data.unitId && data.segmentId ? getSegment(course, data.unitId, data.segmentId) : null;
             const lockedNext = data.locked ? resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId) : null;
             return (
-              <div key={name} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div key={slug} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <div className="flex items-center justify-between p-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-medium text-slate-800">{data.displayName}</span>
+                      {entry.idTag && (
+                        <span title="Last 2 digits of student ID -- for your own disambiguation only, never shown to students" className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono">
+                          ID \u2022{entry.idTag}
+                        </span>
+                      )}
                       {data.locked ? (
                         <>
                           <span className="text-xs px-2 py-0.5 rounded border border-indigo-300 bg-indigo-100 text-indigo-700 inline-flex items-center gap-1">
@@ -843,28 +959,28 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => regeneratePin(name)} title="Click to generate a new PIN"
+                    <button onClick={() => regeneratePin(entry)} title="Click to generate a new PIN"
                       className="text-xs px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 font-mono text-slate-500">
                       <KeyRound size={12} /> {data.pin || "----"}
                     </button>
                     {data.flagged && (
-                      <button onClick={() => clearFlag(name)} className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+                      <button onClick={() => clearFlag(entry)} className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
                         Clear flag
                       </button>
                     )}
                     {data.locked && (
-                      <button onClick={() => unlockStudent(name)} disabled={!lockedNext} title={!lockedNext ? "No further content configured yet" : ""}
+                      <button onClick={() => unlockStudent(entry)} disabled={!lockedNext} title={!lockedNext ? "No further content configured yet" : ""}
                         className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1">
                         <Unlock size={12} /> Unlock
                       </button>
                     )}
-                    <button onClick={() => setExpanded(isOpen ? null : name)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                    <button onClick={() => setExpanded(isOpen ? null : slug)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
                       {isOpen ? "Hide" : "History"}
                     </button>
-                    <button onClick={() => resetStudent(name)} title="Reset progress" className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
+                    <button onClick={() => resetStudent(entry)} title="Reset progress" className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
                       <RotateCcw size={14} />
                     </button>
-                    <button onClick={() => removeStudent(name)} title="Remove student" className="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 transition-colors text-slate-400 hover:text-rose-500">
+                    <button onClick={() => removeStudent(entry)} title="Remove student" className="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 transition-colors text-slate-400 hover:text-rose-500">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -995,7 +1111,12 @@ export default function App() {
 
   useEffect(() => {
     setRosterLoaded(false);
-    loadRoster(course, section).then((r) => { setRoster(r); setRosterLoaded(true); });
+    loadRoster(course, section).then((r) => {
+      // Migrate any old plain-string roster entries (from before idTag existed).
+      const normalized = r.map((e) => (typeof e === "string" ? { name: e, idTag: null } : e));
+      setRoster(normalized);
+      setRosterLoaded(true);
+    });
   }, [course, section]);
 
   return (
