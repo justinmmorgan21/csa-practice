@@ -939,7 +939,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const anyWaiting = Object.values(students).some((d) => d && d.locked);
 
   return (
-    <div className="max-w-3xl mx-auto mt-6">
+    <div className="max-w-5xl mx-auto mt-6">
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addStudent()}
           placeholder="Add student (e.g. Jane D.)" className="flex-1 min-w-[160px] px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
@@ -1326,7 +1326,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50" style={{ backgroundImage: "radial-gradient(circle, #e2e8f0 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
-      <div className="max-w-3xl mx-auto px-4 pt-6 pb-16">
+      <div className="max-w-5xl mx-auto px-4 pt-6 pb-16">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <p className="font-mono text-[11px] text-slate-400 tracking-widest uppercase">Adaptive Practice</p>
