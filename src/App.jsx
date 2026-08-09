@@ -38,9 +38,9 @@ const UNITS = {
       id: "u1",
       label: "Unit 1: Using Objects and Methods",
       segments: [
-        { id: "u1sA", label: "Segment A (Topics 1.1-1.4)", topics: ["1.1", "1.2", "1.3", "1.4"] },
-        { id: "u1sB", label: "Segment B (Topics 1.5-1.9)", topics: ["1.5", "1.6", "1.7", "1.8", "1.9"] },
-        // Segment C (1.10-1.15) will be added here later.
+        { id: "u1sA", label: "Benchmark A (Topics 1.1-1.4)", topics: ["1.1", "1.2", "1.3", "1.4"] },
+        { id: "u1sB", label: "Benchmark B (Topics 1.5-1.9)", topics: ["1.5", "1.6", "1.7", "1.8", "1.9"] },
+        // Benchmark C (1.10-1.15) will be added here later.
       ],
     },
     // Units 2-4 will be added here later.
@@ -463,7 +463,7 @@ function StudentView({ course, section, roster }) {
       <div className="max-w-md mx-auto mt-10">
         <h2 className="font-mono text-lg text-slate-700 mb-3">Who are you?</h2>
         {roster.length === 0 ? (
-          <p className="text-slate-500 text-sm">No students on the roster for this section yet. Ask your teacher to add you from the Teacher tab.</p>
+          <p className="text-slate-500 text-sm">No students on the roster for this section yet. Ask Mr. Morgan to add you from the Teacher tab.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {roster.map((name) => (
@@ -504,7 +504,7 @@ function StudentView({ course, section, roster }) {
             Unlock
           </button>
         </div>
-        {pinError && <p className="text-rose-600 text-xs mt-3">That PIN doesn't match. Ask your teacher if you're not sure.</p>}
+        {pinError && <p className="text-rose-600 text-xs mt-3">That PIN doesn't match. Ask Mr. Morgan if you're not sure.</p>}
         <button onClick={switchStudent} className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-mono">
           not {studentData.displayName}?
         </button>
@@ -547,9 +547,9 @@ function StudentView({ course, section, roster }) {
       {isLocked && (
         <div className="p-6 rounded-xl bg-indigo-50 border border-indigo-200 text-center">
           <Lock className="mx-auto text-indigo-600 mb-2" size={28} />
-          <p className="font-semibold text-indigo-800">{segment ? `${segment.label} complete!` : "Segment complete!"}</p>
+          <p className="font-semibold text-indigo-800">{segment ? `${segment.label} complete!` : "Benchmark complete!"}</p>
           <p className="text-sm text-indigo-700 mt-1">
-            {liveNext ? "Nice work -- waiting for your teacher to unlock the next part." : "You've finished everything currently available here. Great work -- check with your teacher about what's next."}
+            {liveNext ? "Nice work -- waiting for Mr. Morgan to unlock the next Benchmark." : "You've finished everything currently available here. Great work -- check with Mr. Morgan about what's next."}
           </p>
         </div>
       )}
@@ -558,12 +558,12 @@ function StudentView({ course, section, roster }) {
         <div className="p-6 rounded-xl bg-rose-50 border border-rose-200 text-center mt-4">
           <Flag className="mx-auto text-rose-600 mb-2" size={28} />
           <p className="font-semibold text-rose-800">Flagged for small-group help</p>
-          <p className="text-sm text-rose-700 mt-1">You've missed this tier twice in a row. Sit tight -- your teacher will pull you for a quick small-group session.</p>
+          <p className="text-sm text-rose-700 mt-1">You've missed this tier twice in a row. Sit tight -- Mr. Morgan will pull you for a quick small-group session.</p>
           <button onClick={checkFlagStatus} disabled={checkingFlag}
             className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors inline-flex items-center gap-2">
             {checkingFlag ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />} Continue
           </button>
-          {stillFlagged && <p className="text-rose-600 text-xs mt-3">Not yet -- your teacher hasn't cleared you for this tier.</p>}
+          {stillFlagged && <p className="text-rose-600 text-xs mt-3">Not yet -- Mr. Morgan hasn't cleared you for this tier.</p>}
         </div>
       )}
 
@@ -583,7 +583,7 @@ function StudentView({ course, section, roster }) {
             Current tier: <span className={`px-2 py-0.5 rounded border ${TIER_COLORS[studentData.tier]}`}>{TIER_LABELS[studentData.tier]}</span>
           </p>
           <button onClick={startRound} className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-            Start <ChevronRight size={16} />
+            Start round <ChevronRight size={16} />
           </button>
         </div>
       )}
@@ -592,7 +592,7 @@ function StudentView({ course, section, roster }) {
         <div className={`p-6 rounded-xl border text-center ${roundResult.passed ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
           <p className={`font-semibold ${roundResult.passed ? "text-emerald-800" : "text-amber-800"}`}>{roundResult.score} / 3 correct</p>
           <p className={`text-sm mt-1 ${roundResult.passed ? "text-emerald-700" : "text-amber-700"}`}>
-            {roundResult.segmentLocked ? "Segment complete! Waiting for your teacher to unlock the next part."
+            {roundResult.segmentLocked ? "Benchmark complete! Waiting for Mr. Morgan to unlock the next Benchmark."
               : roundResult.topicAdvancedTo ? "Topic mastered! Ready to move on when you are."
               : roundResult.passed ? "Great work -- advancing to the next tier."
               : "Not quite there yet -- let's try this tier again."}
@@ -642,7 +642,7 @@ function StudentView({ course, section, roster }) {
             </button>
           ) : (
             <button onClick={nextQuestion} className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-              {round.index + 1 < round.items.length ? "Next question" : "See tier result"} <ChevronRight size={16} />
+              {round.index + 1 < round.items.length ? "Next question" : "See round result"} <ChevronRight size={16} />
             </button>
           )}
         </div>
