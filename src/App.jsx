@@ -437,7 +437,7 @@ function StudentView({ course, section, roster }) {
 
     setStudentData(updated);
     await saveStudent(course, section, slugify(updated.displayName), updated);
-    setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked });
+    setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked, masteredTopic: studentData.topic });
     setRound(null);
   };
 
@@ -521,6 +521,14 @@ function StudentView({ course, section, roster }) {
   const isLocked = studentData.locked;
   const liveNext = isLocked ? resolveNextSegmentOrUnit(course, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
 
+  // While the "Topic mastered!" round-result is showing, keep the pipeline
+  // displaying the just-finished topic (fully mastered) rather than jumping
+  // ahead to the next topic's Basic tier -- that jump happens only once the
+  // student clicks "Continue to Topic X.X".
+  const showingMasteryResult = !!(roundResult && roundResult.topicAdvancedTo);
+  const displayTopic = showingMasteryResult ? roundResult.masteredTopic : studentData.topic;
+  const displayTier = showingMasteryResult ? "mastered" : studentData.tier;
+
   return (
     <div className="max-w-lg mx-auto mt-6">
       <div className="flex items-center justify-between mb-4">
@@ -535,8 +543,8 @@ function StudentView({ course, section, roster }) {
       </div>
 
       <div className="mb-6 p-4 bg-white rounded-xl border border-slate-200">
-        <TopicRow course={course} unitId={studentData.unitId} segmentId={studentData.segmentId} currentTopic={studentData.topic} masteredTopics={studentData.masteredTopics} />
-        <TierTrack tier={studentData.tier} flagged={isFlagged} />
+        <TopicRow course={course} unitId={studentData.unitId} segmentId={studentData.segmentId} currentTopic={displayTopic} masteredTopics={studentData.masteredTopics} />
+        <TierTrack tier={displayTier} flagged={isFlagged} />
       </div>
 
       {isLocked && (
