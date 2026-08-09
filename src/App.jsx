@@ -21,6 +21,7 @@ import {
   LogOut,
   FileUp,
   X,
+  ArrowRightLeft,
 } from "lucide-react";
 
 // ===========================================================================
@@ -670,6 +671,8 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [pendingRows, setPendingRows] = useState(null); // review-before-commit rows from a parsed PDF
   const [parsingPdf, setParsingPdf] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [movingSlug, setMovingSlug] = useState(null);
+  const [moveTarget, setMoveTarget] = useState("");
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -825,6 +828,31 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
     const updated = { ...data, pin: generatePin() };
     await saveStudent(course, section, slug, updated);
     setStudents((s) => ({ ...s, [slug]: updated }));
+  };
+
+  const moveStudent = async (entry, targetSection) => {
+    if (!targetSection || targetSection === section) return;
+    const slug = rosterSlug(entry);
+    const data = students[slug];
+    if (!data) return;
+    const targetRoster = await loadRoster(course, targetSection);
+    if (targetRoster.some((e) => rosterSlug(e) === slug)) {
+      window.alert(`A student with a matching name/ID already exists in ${targetSection}. Rename one of them first to avoid a conflict.`);
+      return;
+    }
+    await saveStudent(course, targetSection, slug, data);
+    await saveRoster(course, targetSection, [...targetRoster, entry]);
+    const updatedSourceRoster = roster.filter((e) => rosterSlug(e) !== slug);
+    await saveRoster(course, section, updatedSourceRoster);
+    onRosterChange(updatedSourceRoster);
+    await deleteStudent(course, section, slug);
+    setStudents((s) => {
+      const copy = { ...s };
+      delete copy[slug];
+      return copy;
+    });
+    setMovingSlug(null);
+    setMoveTarget("");
   };
 
   const deleteAllStudents = async () => {
@@ -992,6 +1020,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                         <Unlock size={12} /> Unlock
                       </button>
                     )}
+                    <button onClick={() => { setMovingSlug(movingSlug === slug ? null : slug); setMoveTarget(""); }} title="Move to another section"
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
+                      <ArrowRightLeft size={14} />
+                    </button>
                     <button onClick={() => setExpanded(isOpen ? null : slug)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
                       {isOpen ? "Hide" : "History"}
                     </button>
@@ -1003,6 +1035,25 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                     </button>
                   </div>
                 </div>
+                {movingSlug === slug && (
+                  <div className="border-t border-slate-100 bg-slate-50 p-3 flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Move to:</span>
+                    <select value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+                      <option value="">Choose section...</option>
+                      {COURSES[course].sections.filter((s) => s !== section).map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => moveStudent(entry, moveTarget)} disabled={!moveTarget}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      Move
+                    </button>
+                    <button onClick={() => { setMovingSlug(null); setMoveTarget(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500">
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {isOpen && (
                   <div className="border-t border-slate-100 bg-slate-50 p-4">
                     {data.history.length === 0 ? (
