@@ -22,6 +22,7 @@ import {
   FileUp,
   X,
   ArrowRightLeft,
+  Target,
 } from "lucide-react";
 
 // ===========================================================================
@@ -196,6 +197,7 @@ function emptyStudent(displayName, course, idTag = null) {
     masteredTopics: [],
     history: [],
     createdAt: Date.now(),
+    resumePoint: null, // set by a teacher's "return to where they left off" override
   };
 }
 
@@ -427,28 +429,39 @@ function StudentView({ course, section, roster }) {
     let updated = { ...studentData, history: [...studentData.history, ...newAnswers] };
     let topicAdvancedTo = null;
     let segmentLocked = false;
+    let resumedTo = null;
 
     if (passed) {
       updated.misses = 0;
-      const tierIdx = TIER_ORDER.indexOf(studentData.tier);
-      if (tierIdx + 1 < TIER_ORDER.length) {
-        updated.tier = TIER_ORDER[tierIdx + 1];
+      if (studentData.resumePoint) {
+        // Mr. Morgan placed this student here as a one-time detour --
+        // passing sends them straight back to where they actually left
+        // off, bypassing normal tier/topic advancement entirely.
+        resumedTo = studentData.resumePoint;
+        updated.topic = studentData.resumePoint.topic;
+        updated.tier = studentData.resumePoint.tier;
+        updated.resumePoint = null;
       } else {
-        updated.masteredTopics = [...new Set([...updated.masteredTopics, studentData.topic])];
-        const next = resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic);
-        if (next) {
-          // Advance immediately -- the round-result screen below just
-          // reports the move, rather than requiring a second click.
-          updated.topic = next.topic;
-          updated.tier = TIER_ORDER[0];
-          topicAdvancedTo = next.topic;
+        const tierIdx = TIER_ORDER.indexOf(studentData.tier);
+        if (tierIdx + 1 < TIER_ORDER.length) {
+          updated.tier = TIER_ORDER[tierIdx + 1];
         } else {
-          // Last topic in the segment -- rest at "mastered" while locked,
-          // waiting for Mr. Morgan to unlock the next Benchmark.
-          updated.tier = "mastered";
-          updated.locked = true;
-          updated.lockedAt = { unitId: studentData.unitId, segmentId: studentData.segmentId };
-          segmentLocked = true;
+          updated.masteredTopics = [...new Set([...updated.masteredTopics, studentData.topic])];
+          const next = resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic);
+          if (next) {
+            // Advance immediately -- the round-result screen below just
+            // reports the move, rather than requiring a second click.
+            updated.topic = next.topic;
+            updated.tier = TIER_ORDER[0];
+            topicAdvancedTo = next.topic;
+          } else {
+            // Last topic in the segment -- rest at "mastered" while locked,
+            // waiting for Mr. Morgan to unlock the next Benchmark.
+            updated.tier = "mastered";
+            updated.locked = true;
+            updated.lockedAt = { unitId: studentData.unitId, segmentId: studentData.segmentId };
+            segmentLocked = true;
+          }
         }
       }
     } else {
@@ -458,7 +471,7 @@ function StudentView({ course, section, roster }) {
 
     setStudentData(updated);
     await saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
-    setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked, masteredTopic: studentData.topic });
+    setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked, resumedTo, preTopic: studentData.topic, preTier: studentData.tier });
     setRound(null);
   };
 
@@ -546,9 +559,9 @@ function StudentView({ course, section, roster }) {
   // displaying the just-finished topic (fully mastered) rather than jumping
   // ahead to the next topic's Basic tier -- that jump happens only once the
   // student clicks "Continue to Topic X.X".
-  const showingMasteryResult = !!(roundResult && roundResult.topicAdvancedTo);
-  const displayTopic = showingMasteryResult ? roundResult.masteredTopic : studentData.topic;
-  const displayTier = showingMasteryResult ? "mastered" : studentData.tier;
+  const showingTransition = !!(roundResult && (roundResult.topicAdvancedTo || roundResult.resumedTo));
+  const displayTopic = showingTransition ? roundResult.preTopic : studentData.topic;
+  const displayTier = showingTransition ? (roundResult.topicAdvancedTo ? "mastered" : roundResult.preTier) : studentData.tier;
 
   return (
     <div className="max-w-lg mx-auto mt-6">
@@ -607,13 +620,15 @@ function StudentView({ course, section, roster }) {
           <p className={`font-semibold ${roundResult.passed ? "text-emerald-800" : "text-amber-800"}`}>{roundResult.score} / 3 correct</p>
           <p className={`text-sm mt-1 ${roundResult.passed ? "text-emerald-700" : "text-amber-700"}`}>
             {roundResult.segmentLocked ? "Benchmark complete! Waiting for Mr. Morgan to unlock the next Benchmark."
+              : roundResult.resumedTo ? "Nice work! Picking back up where you left off."
               : roundResult.topicAdvancedTo ? "Topic mastered!"
               : roundResult.passed ? "Great work -- advancing to the next tier."
               : "Not quite there yet -- let's try this tier again."}
           </p>
           {!roundResult.segmentLocked && (
             <button onClick={() => setRoundResult(null)} className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-              {roundResult.topicAdvancedTo ? `Continue to Topic ${roundResult.topicAdvancedTo}` : "Continue"} <ChevronRight size={16} />
+              {roundResult.resumedTo ? `Continue to Topic ${roundResult.resumedTo.topic}`
+                : roundResult.topicAdvancedTo ? `Continue to Topic ${roundResult.topicAdvancedTo}` : "Continue"} <ChevronRight size={16} />
             </button>
           )}
         </div>
@@ -681,6 +696,12 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [uploadError, setUploadError] = useState("");
   const [movingSlug, setMovingSlug] = useState(null);
   const [moveTarget, setMoveTarget] = useState("");
+  const [settingSlug, setSettingSlug] = useState(null);
+  const [posUnit, setPosUnit] = useState("");
+  const [posSegment, setPosSegment] = useState("");
+  const [posTopic, setPosTopic] = useState("");
+  const [posTier, setPosTier] = useState("basic");
+  const [pendingPosition, setPendingPosition] = useState(null); // {entry, newPos, oldPos} while confirming a backward move
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -863,6 +884,44 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
     setMoveTarget("");
   };
 
+  const openPositionPicker = (entry) => {
+    const slug = rosterSlug(entry);
+    if (settingSlug === slug) { setSettingSlug(null); return; }
+    const data = students[slug];
+    setSettingSlug(slug);
+    setPendingPosition(null);
+    // Default the picker to the student's current position for convenience.
+    setPosUnit(data?.unitId || (UNITS[course][0]?.id ?? ""));
+    setPosSegment(data?.segmentId || (UNITS[course][0]?.segments[0]?.id ?? ""));
+    setPosTopic(data?.topic || (UNITS[course][0]?.segments[0]?.topics[0] ?? ""));
+    setPosTier(TIER_ORDER.includes(data?.tier) ? data.tier : "basic");
+  };
+
+  const initiateSetPosition = (entry) => {
+    const slug = rosterSlug(entry);
+    const data = students[slug];
+    if (!data || !posUnit || !posSegment || !posTopic) return;
+    const newPos = { unitId: posUnit, segmentId: posSegment, topic: posTopic, tier: posTier };
+    const oldPos = { unitId: data.unitId, segmentId: data.segmentId, topic: data.topic, tier: data.tier };
+    const cmp = compareTuples(positionTuple(course, newPos), positionTuple(course, oldPos));
+    if (cmp < 0) {
+      setPendingPosition({ entry, newPos, oldPos });
+    } else {
+      applyPosition(entry, newPos, null);
+    }
+  };
+
+  const applyPosition = async (entry, newPos, resumePoint) => {
+    const slug = rosterSlug(entry);
+    const data = students[slug];
+    if (!data) return;
+    const updated = { ...data, ...newPos, locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: resumePoint || null };
+    await saveStudent(course, section, slug, updated);
+    setStudents((s) => ({ ...s, [slug]: updated }));
+    setSettingSlug(null);
+    setPendingPosition(null);
+  };
+
   const deleteAllStudents = async () => {
     if (roster.length === 0) return;
     const confirmed = window.confirm(
@@ -1034,6 +1093,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                       className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
                       <ArrowRightLeft size={14} />
                     </button>
+                    <button onClick={() => openPositionPicker(entry)} title="Set exact topic/tier"
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
+                      <Target size={14} />
+                    </button>
                     <button onClick={() => setExpanded(isOpen ? null : slug)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
                       {isOpen ? "Hide" : "History"}
                     </button>
@@ -1064,6 +1127,40 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                     </button>
                   </div>
                 )}
+                {settingSlug === slug && (
+                  <div className="border-t border-slate-100 bg-slate-50 p-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-500">Set to:</span>
+                    <select value={posUnit} onChange={(e) => {
+                        const u = e.target.value;
+                        const firstSeg = getUnit(course, u)?.segments[0];
+                        setPosUnit(u); setPosSegment(firstSeg?.id || ""); setPosTopic(firstSeg?.topics[0] || "");
+                      }} className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+                      {UNITS[course].map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+                    </select>
+                    <select value={posSegment} onChange={(e) => {
+                        const s = e.target.value;
+                        const seg = getUnit(course, posUnit)?.segments.find((x) => x.id === s);
+                        setPosSegment(s); setPosTopic(seg?.topics[0] || "");
+                      }} className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+                      {getUnit(course, posUnit)?.segments.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                    <select value={posTopic} onChange={(e) => setPosTopic(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+                      {getSegment(course, posUnit, posSegment)?.topics.map((t) => <option key={t} value={t}>Topic {t}</option>)}
+                    </select>
+                    <select value={posTier} onChange={(e) => setPosTier(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+                      {TIER_ORDER.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+                    </select>
+                    <button onClick={() => initiateSetPosition(entry)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                      Set
+                    </button>
+                    <button onClick={() => setSettingSlug(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500">
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {isOpen && (
                   <div className="border-t border-slate-100 bg-slate-50 p-4">
                     {data.history.length === 0 ? (
@@ -1088,6 +1185,35 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {pendingPosition && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 max-w-sm w-full">
+            <p className="text-sm font-semibold text-slate-800 mb-1">Moving backward</p>
+            <p className="text-xs text-slate-500 mb-4">
+              This sets {pendingPosition.entry.name} to Topic {pendingPosition.newPos.topic} ({TIER_LABELS[pendingPosition.newPos.tier]}), earlier than where they currently are.
+              How should this work?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => applyPosition(pendingPosition.entry, pendingPosition.newPos, null)}
+                className="text-left px-3 py-2.5 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-sm">
+                <span className="font-medium text-slate-800">Continue normally from here</span>
+                <p className="text-xs text-slate-500 mt-0.5">They'll progress forward as usual, eventually working back up through everything in between.</p>
+              </button>
+              <button
+                onClick={() => applyPosition(pendingPosition.entry, pendingPosition.newPos, pendingPosition.oldPos)}
+                className="text-left px-3 py-2.5 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-sm">
+                <span className="font-medium text-slate-800">Do this, then return to where they left off</span>
+                <p className="text-xs text-slate-500 mt-0.5">One pass at Topic {pendingPosition.newPos.topic} ({TIER_LABELS[pendingPosition.newPos.tier]}), then straight back to Topic {pendingPosition.oldPos.topic} ({TIER_LABELS[pendingPosition.oldPos.tier]}).</p>
+              </button>
+            </div>
+            <button onClick={() => setPendingPosition(null)} className="mt-3 text-xs text-slate-400 hover:text-slate-600">
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
