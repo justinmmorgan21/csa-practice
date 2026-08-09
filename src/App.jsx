@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent } from "./storage";
 import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "./auth";
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
+import { getReview } from "./reviews";
 import { ITEM_BANK } from "./items";
 import {
   CheckCircle2,
@@ -23,6 +24,7 @@ import {
   X,
   ArrowRightLeft,
   Target,
+  BookOpen,
 } from "lucide-react";
 
 // ===========================================================================
@@ -367,6 +369,7 @@ function StudentView({ course, section, roster }) {
   const [roundResult, setRoundResult] = useState(null);
   const [checkingFlag, setCheckingFlag] = useState(false);
   const [stillFlagged, setStillFlagged] = useState(false);
+  const [showReview, setShowReview] = useState(false);
 
   useEffect(() => { setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
 
@@ -398,7 +401,7 @@ function StudentView({ course, section, roster }) {
 
   const switchStudent = () => {
     setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
-    setCheckingFlag(false); setStillFlagged(false);
+    setCheckingFlag(false); setStillFlagged(false); setShowReview(false);
   };
 
   const startRound = () => {
@@ -554,6 +557,7 @@ function StudentView({ course, section, roster }) {
   const isFlagged = studentData.flagged;
   const isLocked = studentData.locked;
   const liveNext = isLocked ? resolveNextSegmentOrUnit(course, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
+  const review = isFlagged ? getReview(studentData.topic, studentData.tier) : null;
 
   // While the "Topic mastered!" round-result is showing, keep the pipeline
   // displaying the just-finished topic (fully mastered) rather than jumping
@@ -596,11 +600,37 @@ function StudentView({ course, section, roster }) {
           <Flag className="mx-auto text-rose-600 mb-2" size={28} />
           <p className="font-semibold text-rose-800">Flagged for small-group help</p>
           <p className="text-sm text-rose-700 mt-1">You've missed this tier twice in a row. Sit tight -- Mr. Morgan will pull you for a quick small-group session.</p>
-          <button onClick={checkFlagStatus} disabled={checkingFlag}
-            className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors inline-flex items-center gap-2">
-            {checkingFlag ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />} Continue
-          </button>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <button onClick={checkFlagStatus} disabled={checkingFlag}
+              className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors inline-flex items-center gap-2">
+              {checkingFlag ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />} Continue
+            </button>
+            {review && (
+              <button onClick={() => setShowReview((v) => !v)}
+                className="px-5 py-2.5 rounded-lg border border-rose-300 text-rose-700 bg-white font-medium hover:bg-rose-50 transition-colors inline-flex items-center gap-2">
+                <BookOpen size={16} /> {showReview ? "Hide review" : "Review while you wait"}
+              </button>
+            )}
+          </div>
           {stillFlagged && <p className="text-rose-600 text-xs mt-3">Not yet -- Mr. Morgan hasn't cleared you for this tier.</p>}
+        </div>
+      )}
+
+      {!isLocked && isFlagged && showReview && review && (
+        <div className="mt-4 p-5 rounded-xl bg-white border border-slate-200 text-left">
+          <p className="text-xs font-mono text-slate-400 mb-1">Topic {studentData.topic} \u00b7 {TIER_LABELS[studentData.tier]}</p>
+          <h3 className="text-lg font-semibold text-slate-800 mb-3">{review.title}</h3>
+          <p className="text-sm text-slate-700 mb-4 whitespace-pre-line">{review.concept}</p>
+          {review.examples.map((ex, i) => (
+            <div key={i} className="mb-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="text-xs font-mono text-slate-400 mb-1">Example</p>
+              <p className="text-sm text-slate-700 whitespace-pre-line font-mono">{ex.text}</p>
+            </div>
+          ))}
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <p className="text-xs font-mono text-amber-600 mb-1">Common mistake</p>
+            <p className="text-sm text-amber-800">{review.commonMistake}</p>
+          </div>
         </div>
       )}
 
