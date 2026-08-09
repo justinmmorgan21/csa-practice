@@ -145,6 +145,14 @@ function compareTuples(a, b) {
   return 0;
 }
 
+// Extracts a sortable last initial from a name like "Jane A." -> "A".
+// Falls back gracefully for names that don't follow that convention.
+function lastInitial(name) {
+  const parts = name.trim().split(/\s+/);
+  const last = parts[parts.length - 1] || "";
+  return last.replace(/[^A-Za-z]/g, "").toUpperCase();
+}
+
 function slugify(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40) || "student";
 }
@@ -954,7 +962,9 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
             if (!a || !b) return 0;
             const flagDiff = (a.flagged ? 0 : 1) - (b.flagged ? 0 : 1);
             if (flagDiff !== 0) return flagDiff;
-            return compareTuples(positionTuple(course, a), positionTuple(course, b));
+            const posCompare = compareTuples(positionTuple(course, a), positionTuple(course, b));
+            if (posCompare !== 0) return posCompare;
+            return lastInitial(entryA.name).localeCompare(lastInitial(entryB.name));
           }).map((entry) => {
             const slug = rosterSlug(entry);
             const data = students[slug];
