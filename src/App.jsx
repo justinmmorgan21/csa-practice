@@ -482,7 +482,7 @@ function StudentView({ course, section, roster }) {
           <p className="text-slate-500 text-sm">No students on the roster for this section yet. Ask Mr. Morgan to add you from the Teacher tab.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {roster.map((entry) => (
+            {[...roster].sort((a, b) => lastInitial(a.name).localeCompare(lastInitial(b.name))).map((entry) => (
               <button key={rosterSlug(entry)} onClick={() => selectStudent(entry)}
                 className="text-left px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
                 {entry.name}
