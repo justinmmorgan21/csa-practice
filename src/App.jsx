@@ -39,7 +39,8 @@ const UNITS = {
       label: "Unit 1: Using Objects and Methods",
       segments: [
         { id: "u1sA", label: "Segment A (Topics 1.1-1.4)", topics: ["1.1", "1.2", "1.3", "1.4"] },
-        // Segment B (1.5-1.9) and Segment C (1.10-1.15) will be added here later.
+        { id: "u1sB", label: "Segment B (Topics 1.5-1.9)", topics: ["1.5", "1.6", "1.7", "1.8", "1.9"] },
+        // Segment C (1.10-1.15) will be added here later.
       ],
     },
     // Units 2-4 will be added here later.
@@ -54,6 +55,11 @@ const TOPIC_LABELS = {
   "1.2": "Variables & Data Types",
   "1.3": "Expressions & Output",
   "1.4": "Assignment Statements & Input",
+  "1.5": "Casting & Range of Variables",
+  "1.6": "Compound Assignment Operators",
+  "1.7": "API and Libraries",
+  "1.8": "Documentation with Comments",
+  "1.9": "Method Signatures",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
