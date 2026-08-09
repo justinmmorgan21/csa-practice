@@ -411,6 +411,7 @@ function StudentView({ course, section, roster }) {
     setSelectedChoice(null);
     setShowFeedback(false);
     setRoundResult(null);
+    setShowReview(false);
   };
 
   const submitAnswer = () => { if (selectedChoice !== null) setShowFeedback(true); };
@@ -557,7 +558,7 @@ function StudentView({ course, section, roster }) {
   const isFlagged = studentData.flagged;
   const isLocked = studentData.locked;
   const liveNext = isLocked ? resolveNextSegmentOrUnit(course, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
-  const review = isFlagged ? getReview(studentData.topic, studentData.tier) : null;
+  const review = getReview(studentData.topic, studentData.tier);
 
   // While the "Topic mastered!" round-result is showing, keep the pipeline
   // displaying the just-finished topic (fully mastered) rather than jumping
@@ -656,11 +657,37 @@ function StudentView({ course, section, roster }) {
               : "Not quite there yet -- let's try this tier again."}
           </p>
           {!roundResult.segmentLocked && (
-            <button onClick={() => setRoundResult(null)} className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-              {roundResult.resumedTo ? `Continue to Topic ${roundResult.resumedTo.topic}`
-                : roundResult.topicAdvancedTo ? `Continue to Topic ${roundResult.topicAdvancedTo}` : "Continue"} <ChevronRight size={16} />
-            </button>
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <button onClick={() => setRoundResult(null)} className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
+                {roundResult.resumedTo ? `Continue to Topic ${roundResult.resumedTo.topic}`
+                  : roundResult.topicAdvancedTo ? `Continue to Topic ${roundResult.topicAdvancedTo}` : "Continue"} <ChevronRight size={16} />
+              </button>
+              {!roundResult.passed && review && (
+                <button onClick={() => setShowReview((v) => !v)}
+                  className="px-5 py-2.5 rounded-lg border border-amber-300 text-amber-800 bg-white font-medium hover:bg-amber-50 transition-colors inline-flex items-center gap-2">
+                  <BookOpen size={16} /> {showReview ? "Hide review" : "Review before trying again"}
+                </button>
+              )}
+            </div>
           )}
+        </div>
+      )}
+
+      {!isLocked && !isFlagged && roundResult && !roundResult.passed && showReview && review && (
+        <div className="mt-4 p-5 rounded-xl bg-white border border-slate-200 text-left">
+          <p className="text-xs font-mono text-slate-400 mb-1">Topic {studentData.topic} \u00b7 {TIER_LABELS[studentData.tier]}</p>
+          <h3 className="text-lg font-semibold text-slate-800 mb-3">{review.title}</h3>
+          <p className="text-sm text-slate-700 mb-4 whitespace-pre-line">{review.concept}</p>
+          {review.examples.map((ex, i) => (
+            <div key={i} className="mb-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="text-xs font-mono text-slate-400 mb-1">Example</p>
+              <p className="text-sm text-slate-700 whitespace-pre-line font-mono">{ex.text}</p>
+            </div>
+          ))}
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <p className="text-xs font-mono text-amber-600 mb-1">Common mistake</p>
+            <p className="text-sm text-amber-800">{review.commonMistake}</p>
+          </div>
         </div>
       )}
 
