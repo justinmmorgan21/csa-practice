@@ -827,6 +827,20 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
     setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
+  const deleteAllStudents = async () => {
+    if (roster.length === 0) return;
+    const confirmed = window.confirm(
+      `Delete all ${roster.length} student${roster.length === 1 ? "" : "s"} in ${COURSES[course].label} \u00b7 ${section}? This permanently erases their progress and cannot be undone.`
+    );
+    if (!confirmed) return;
+    for (const entry of roster) {
+      await deleteStudent(course, section, rosterSlug(entry));
+    }
+    await saveRoster(course, section, []);
+    onRosterChange([]);
+    setStudents({});
+  };
+
   const anyWaiting = Object.values(students).some((d) => d && d.locked);
 
   return (
@@ -856,6 +870,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
           className="ml-auto px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           <Lock size={14} /> Lock
         </button>
+        <button onClick={deleteAllStudents} disabled={roster.length === 0} title="Permanently delete every student in this section"
+          className="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1 text-sm">
+          <Trash2 size={14} /> Delete all students
+        </button>
       </div>
 
       {uploadError && <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 font-mono">{uploadError}</div>}
@@ -875,7 +893,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                 <input type="checkbox" checked={row.include} onChange={(e) => updatePendingRow(i, { include: e.target.checked })} />
                 <input value={row.editedName} onChange={(e) => updatePendingRow(i, { editedName: e.target.value })}
                   className="flex-1 px-2 py-1 rounded border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                {row.idTag && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono shrink-0">{`ID \u2022${row.idTag}`}</span>}
+                {row.idTag && <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono shrink-0">{`ID ${row.idTag}`}</span>}
               </div>
             ))}
           </div>
@@ -926,7 +944,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                       <span className="font-medium text-slate-800">{data.displayName}</span>
                       {entry.idTag && (
                         <span title="Last 2 digits of student ID -- for your own disambiguation only, never shown to students" className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 font-mono">
-                          {`ID \u2022${entry.idTag}`}
+                          {`ID ${entry.idTag}`}
                         </span>
                       )}
                       {data.locked ? (
