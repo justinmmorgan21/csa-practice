@@ -1,7 +1,7 @@
 // Unit 1 practice items -- Segment A (Topics 1.1-1.4).
 // All items are original; none are reused from official AP Classroom
 // Progress Check assessments, which remain reserved for actual quizzes.
-export const UNIT1_ITEMS = [
+export const UNIT1_SEGMENT_A_ITEMS = [
 
   // ---- 1.1 ----
   { id: "1.1-b1", course: "csa", topic: "1.1", tier: "basic", lo: "1.1.A", prompt: "Which of the following best describes sequencing in an algorithm?",
