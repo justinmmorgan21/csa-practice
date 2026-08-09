@@ -413,15 +413,18 @@ function StudentView({ course, section, roster }) {
       if (tierIdx + 1 < TIER_ORDER.length) {
         updated.tier = TIER_ORDER[tierIdx + 1];
       } else {
-        // Just finished Complex -- rest at "mastered" for this topic. The
-        // actual move to the next topic happens when the student clicks
-        // "Continue to Topic X", via advanceTopic() below.
-        updated.tier = "mastered";
         updated.masteredTopics = [...new Set([...updated.masteredTopics, studentData.topic])];
         const next = resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic);
         if (next) {
+          // Advance immediately -- the round-result screen below just
+          // reports the move, rather than requiring a second click.
+          updated.topic = next.topic;
+          updated.tier = TIER_ORDER[0];
           topicAdvancedTo = next.topic;
         } else {
+          // Last topic in the segment -- rest at "mastered" while locked,
+          // waiting for Mr. Morgan to unlock the next Benchmark.
+          updated.tier = "mastered";
           updated.locked = true;
           updated.lockedAt = { unitId: studentData.unitId, segmentId: studentData.segmentId };
           segmentLocked = true;
@@ -436,14 +439,6 @@ function StudentView({ course, section, roster }) {
     await saveStudent(course, section, slugify(updated.displayName), updated);
     setRoundResult({ score, passed, flagged: updated.flagged, topicAdvancedTo, segmentLocked });
     setRound(null);
-  };
-
-  const advanceTopic = async () => {
-    const next = resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic);
-    if (!next) return;
-    const updated = { ...studentData, topic: next.topic, tier: TIER_ORDER[0] };
-    setStudentData(updated);
-    await saveStudent(course, section, slugify(updated.displayName), updated);
   };
 
   const checkFlagStatus = async () => {
@@ -567,17 +562,7 @@ function StudentView({ course, section, roster }) {
         </div>
       )}
 
-      {!isLocked && !isFlagged && !round && !roundResult && studentData.tier === "mastered" && (
-        <div className="p-6 rounded-xl bg-emerald-50 border border-emerald-200 text-center">
-          <CheckCircle2 className="mx-auto text-emerald-600 mb-2" size={28} />
-          <p className="font-semibold text-emerald-800">Topic {studentData.topic} mastered!</p>
-          <button onClick={advanceTopic} className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-            Continue to Topic {resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic)?.topic} <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-
-      {!isLocked && !isFlagged && !round && !roundResult && studentData.tier !== "mastered" && (
+      {!isLocked && !isFlagged && !round && !roundResult && (
         <div className="p-6 rounded-xl bg-white border border-slate-200 text-center">
           <p className="text-sm text-slate-500 mb-4 font-mono">
             Current tier: <span className={`px-2 py-0.5 rounded border ${TIER_COLORS[studentData.tier]}`}>{TIER_LABELS[studentData.tier]}</span>
@@ -593,13 +578,13 @@ function StudentView({ course, section, roster }) {
           <p className={`font-semibold ${roundResult.passed ? "text-emerald-800" : "text-amber-800"}`}>{roundResult.score} / 3 correct</p>
           <p className={`text-sm mt-1 ${roundResult.passed ? "text-emerald-700" : "text-amber-700"}`}>
             {roundResult.segmentLocked ? "Benchmark complete! Waiting for Mr. Morgan to unlock the next Benchmark."
-              : roundResult.topicAdvancedTo ? "Topic mastered! Ready to move on when you are."
+              : roundResult.topicAdvancedTo ? "Topic mastered!"
               : roundResult.passed ? "Great work -- advancing to the next tier."
               : "Not quite there yet -- let's try this tier again."}
           </p>
           {!roundResult.segmentLocked && (
             <button onClick={() => setRoundResult(null)} className="mt-4 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-              Continue <ChevronRight size={16} />
+              {roundResult.topicAdvancedTo ? `Continue to Topic ${roundResult.topicAdvancedTo}` : "Continue"} <ChevronRight size={16} />
             </button>
           )}
         </div>
