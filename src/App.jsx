@@ -25,6 +25,7 @@ import {
   ArrowRightLeft,
   Target,
   BookOpen,
+  Pencil,
 } from "lucide-react";
 
 // ===========================================================================
@@ -759,6 +760,9 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [posTopic, setPosTopic] = useState("");
   const [posTier, setPosTier] = useState("basic");
   const [pendingPosition, setPendingPosition] = useState(null); // {entry, newPos, oldPos} while confirming a backward move
+  const [renamingSlug, setRenamingSlug] = useState(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameIdTag, setRenameIdTag] = useState("");
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -939,6 +943,41 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
     });
     setMovingSlug(null);
     setMoveTarget("");
+  };
+
+  const openRename = (entry) => {
+    const slug = rosterSlug(entry);
+    if (renamingSlug === slug) { setRenamingSlug(null); return; }
+    setRenamingSlug(slug);
+    setRenameName(entry.name);
+    setRenameIdTag(entry.idTag || "");
+  };
+
+  const renameStudent = async (entry) => {
+    const trimmedName = renameName.trim();
+    if (!trimmedName) return;
+    const newEntry = { name: trimmedName, idTag: renameIdTag.trim() || null };
+    const oldSlug = rosterSlug(entry);
+    const newSlug = rosterSlug(newEntry);
+    if (newSlug !== oldSlug && roster.some((e) => rosterSlug(e) === newSlug)) {
+      window.alert("A student with that exact name/ID already exists. Choose a different name or ID tag.");
+      return;
+    }
+    const data = students[oldSlug];
+    if (!data) return;
+    const updatedData = { ...data, displayName: trimmedName, idTag: newEntry.idTag };
+    await saveStudent(course, section, newSlug, updatedData);
+    if (newSlug !== oldSlug) await deleteStudent(course, section, oldSlug);
+    const updatedRoster = roster.map((e) => (rosterSlug(e) === oldSlug ? newEntry : e));
+    await saveRoster(course, section, updatedRoster);
+    onRosterChange(updatedRoster);
+    setStudents((s) => {
+      const copy = { ...s };
+      if (newSlug !== oldSlug) delete copy[oldSlug];
+      copy[newSlug] = updatedData;
+      return copy;
+    });
+    setRenamingSlug(null);
   };
 
   const openPositionPicker = (entry) => {
@@ -1146,6 +1185,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                         <Unlock size={12} /> Unlock
                       </button>
                     )}
+                    <button onClick={() => openRename(entry)} title="Rename"
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
+                      <Pencil size={14} />
+                    </button>
                     <button onClick={() => { setMovingSlug(movingSlug === slug ? null : slug); setMoveTarget(""); }} title="Move to another section"
                       className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400">
                       <ArrowRightLeft size={14} />
@@ -1165,6 +1208,22 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                     </button>
                   </div>
                 </div>
+                {renamingSlug === slug && (
+                  <div className="border-t border-slate-100 bg-slate-50 p-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-500">Rename to:</span>
+                    <input value={renameName} onChange={(e) => setRenameName(e.target.value)}
+                      placeholder="e.g. Jane D." className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs w-40" />
+                    <input value={renameIdTag} onChange={(e) => setRenameIdTag(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="ID tag (optional)" className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono w-32" />
+                    <button onClick={() => renameStudent(entry)} disabled={!renameName.trim()}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+                      Save
+                    </button>
+                    <button onClick={() => setRenamingSlug(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500">
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {movingSlug === slug && (
                   <div className="border-t border-slate-100 bg-slate-50 p-3 flex items-center gap-2">
                     <span className="text-xs text-slate-500">Move to:</span>
