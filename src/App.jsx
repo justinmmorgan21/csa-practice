@@ -3,7 +3,7 @@ import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent } fr
 import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "./auth";
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { getReview } from "./reviews";
-import { ITEM_BANK } from "./items";
+import { loadAllContent, saveSegmentItems } from "./contentStore";
 import {
   CheckCircle2,
   XCircle,
@@ -26,6 +26,7 @@ import {
   Target,
   BookOpen,
   Pencil,
+  Wrench,
 } from "lucide-react";
 
 // ===========================================================================
@@ -125,13 +126,25 @@ function resolveNextSegmentOrUnit(course, unitId, segmentId) {
   return null; // nothing further configured yet
 }
 
+// Finds which unit/segment a given topic belongs to, for a course. Used by
+// the content editor to know which Firestore segment-document to write back
+// to when an item is edited, added, or deleted.
+function findSegmentForTopic(course, topic) {
+  for (const unit of UNITS[course] || []) {
+    for (const seg of unit.segments) {
+      if (seg.topics.includes(topic)) return { unitId: unit.id, segmentId: seg.id, topics: seg.topics };
+    }
+  }
+  return null;
+}
+
 // ===========================================================================
 // ITEM BANK -- currently CSA Unit 1 / Segment A (Topics 1.1-1.4) only.
 // All items are original; none are reused from official AP Classroom
 // Progress Check assessments, which remain reserved for actual quizzes.
 // ===========================================================================
-function itemsForTopicTier(course, topic, tier) {
-  return ITEM_BANK.filter((it) => it.course === course && it.topic === topic && it.tier === tier);
+function itemsForTopicTier(itemBank, course, topic, tier) {
+  return itemBank.filter((it) => it.course === course && it.topic === topic && it.tier === tier);
 }
 
 // Returns an [unit, segment, topic, tier] index tuple for ordering students by
@@ -363,7 +376,7 @@ function CourseSectionBar({ course, section, onCourse, onSection }) {
 // ---------------------------------------------------------------------------
 // Student practice view
 // ---------------------------------------------------------------------------
-function StudentView({ course, section, roster }) {
+function StudentView({ course, section, roster, itemBank }) {
   const [selectedName, setSelectedName] = useState("");
   const [studentData, setStudentData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -412,7 +425,7 @@ function StudentView({ course, section, roster }) {
   };
 
   const startRound = () => {
-    const pool = itemsForTopicTier(course, studentData.topic, studentData.tier);
+    const pool = itemsForTopicTier(itemBank, course, studentData.topic, studentData.tier);
     const items = sample(pool, Math.min(3, pool.length));
     setRound({ items, index: 0, answers: [] });
     setSelectedChoice(null);
@@ -747,7 +760,7 @@ function StudentView({ course, section, roster }) {
 // ---------------------------------------------------------------------------
 // Teacher dashboard
 // ---------------------------------------------------------------------------
-function TeacherView({ course, section, roster, onRosterChange, onLock }) {
+function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank, onItemBankChange }) {
   const [students, setStudents] = useState({});
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
@@ -769,6 +782,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
   const [renamingSlug, setRenamingSlug] = useState(null);
   const [renameName, setRenameName] = useState("");
   const [renameIdTag, setRenameIdTag] = useState("");
+  const [showContentEditor, setShowContentEditor] = useState(false);
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -1071,7 +1085,16 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
           className="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1 text-sm">
           <Trash2 size={14} /> Delete all students
         </button>
+        <button onClick={() => setShowContentEditor((v) => !v)}
+          className={`px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1 text-sm ${showContentEditor ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+          <Wrench size={14} /> {showContentEditor ? "Back to roster" : "Content Editor"}
+        </button>
       </div>
+
+      {showContentEditor ? (
+        <ContentEditor course={course} itemBank={itemBank} onItemBankChange={onItemBankChange} />
+      ) : (
+      <>
 
       {uploadError && <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 font-mono">{uploadError}</div>}
 
@@ -1290,7 +1313,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
                     ) : (
                       <div className="flex flex-col gap-1.5">
                         {data.history.slice().reverse().map((h, i) => {
-                          const item = ITEM_BANK.find((it) => it.id === h.itemId);
+                          const item = itemBank.find((it) => it.id === h.itemId);
                           return (
                             <div key={i} className="flex items-center gap-2 text-xs">
                               {h.correct ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" /> : <XCircle size={14} className="text-rose-500 shrink-0" />}
@@ -1338,6 +1361,196 @@ function TeacherView({ course, section, roster, onRosterChange, onLock }) {
           </div>
         </div>
       )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Content Editor -- live editing of the question bank, backed by Firestore.
+// ---------------------------------------------------------------------------
+function ContentEditor({ course, itemBank, onItemBankChange }) {
+  const firstUnit = UNITS[course][0];
+  const firstSegment = firstUnit?.segments[0];
+  const [edUnit, setEdUnit] = useState(firstUnit?.id || "");
+  const [edSegment, setEdSegment] = useState(firstSegment?.id || "");
+  const [edTopic, setEdTopic] = useState(firstSegment?.topics[0] || "");
+  const [edTier, setEdTier] = useState("basic");
+  const [localItems, setLocalItems] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+
+  useEffect(() => {
+    const matches = itemBank.filter((it) => it.course === course && it.topic === edTopic && it.tier === edTier);
+    setLocalItems(matches.map((it) => ({ ...it, choices: [...it.choices] })));
+    setDirty(false);
+    setSaveMsg("");
+  }, [course, edTopic, edTier, itemBank]);
+
+  const updateItem = (index, patch) => {
+    setLocalItems((items) => items.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+    setDirty(true);
+    setSaveMsg("");
+  };
+  const updateChoice = (index, choiceIndex, value) => {
+    setLocalItems((items) => items.map((it, i) => {
+      if (i !== index) return it;
+      const choices = [...it.choices];
+      choices[choiceIndex] = value;
+      return { ...it, choices };
+    }));
+    setDirty(true);
+    setSaveMsg("");
+  };
+  const addItem = () => {
+    const newItem = { id: `${edTopic}-custom-${Date.now()}`, course, topic: edTopic, tier: edTier, lo: "", prompt: "", choices: ["", "", "", ""], answer: 0, explanation: "" };
+    setLocalItems((items) => [...items, newItem]);
+    setDirty(true);
+  };
+  const deleteItem = (index) => {
+    setLocalItems((items) => items.filter((_, i) => i !== index));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    const loc = findSegmentForTopic(course, edTopic);
+    if (!loc) return;
+    setSaving(true);
+    const updatedBank = [
+      ...itemBank.filter((it) => !(it.course === course && it.topic === edTopic && it.tier === edTier)),
+      ...localItems,
+    ];
+    const segmentItems = updatedBank.filter((it) => it.course === course && loc.topics.includes(it.topic));
+    await saveSegmentItems(course, loc.unitId, loc.segmentId, segmentItems);
+    onItemBankChange(updatedBank);
+    setSaving(false);
+    setDirty(false);
+    setSaveMsg("Saved.");
+  };
+
+  const handleImport = async () => {
+    setImportMsg("");
+    let parsed;
+    try {
+      parsed = JSON.parse(importText);
+      if (!Array.isArray(parsed)) throw new Error("not an array");
+    } catch {
+      setImportMsg("That doesn't look like valid JSON for a list of items.");
+      return;
+    }
+    const bySegment = new Map();
+    for (const item of parsed) {
+      const loc = findSegmentForTopic(item.course || course, item.topic);
+      if (!loc) continue;
+      const key = `${item.course || course}:${loc.unitId}:${loc.segmentId}`;
+      if (!bySegment.has(key)) bySegment.set(key, { segCourse: item.course || course, ...loc });
+    }
+    let updatedBank = [...itemBank];
+    for (const item of parsed) {
+      const idx = updatedBank.findIndex((it) => it.id === item.id);
+      if (idx >= 0) updatedBank[idx] = item;
+      else updatedBank.push(item);
+    }
+    for (const { segCourse, unitId, segmentId, topics } of bySegment.values()) {
+      const segmentItems = updatedBank.filter((it) => it.course === segCourse && topics.includes(it.topic));
+      await saveSegmentItems(segCourse, unitId, segmentId, segmentItems);
+    }
+    onItemBankChange(updatedBank);
+    setImportMsg(`Imported ${parsed.length} item${parsed.length === 1 ? "" : "s"} across ${bySegment.size} segment${bySegment.size === 1 ? "" : "s"}.`);
+    setImportText("");
+  };
+
+  const handleExportContent = () => {
+    downloadJson(itemBank, `content-bank-${course}-${new Date().toISOString().slice(0, 10)}.json`);
+  };
+
+  const currentSegment = getSegment(course, edUnit, edSegment);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <select value={edUnit} onChange={(e) => {
+            const u = e.target.value;
+            const firstSeg = getUnit(course, u)?.segments[0];
+            setEdUnit(u); setEdSegment(firstSeg?.id || ""); setEdTopic(firstSeg?.topics[0] || "");
+          }} className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+          {UNITS[course].map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+        </select>
+        <select value={edSegment} onChange={(e) => {
+            const s = e.target.value;
+            const seg = getUnit(course, edUnit)?.segments.find((x) => x.id === s);
+            setEdSegment(s); setEdTopic(seg?.topics[0] || "");
+          }} className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+          {getUnit(course, edUnit)?.segments.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <select value={edTopic} onChange={(e) => setEdTopic(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+          {currentSegment?.topics.map((t) => <option key={t} value={t}>Topic {t}</option>)}
+        </select>
+        <select value={edTier} onChange={(e) => setEdTier(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono">
+          {TIER_ORDER.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+        </select>
+        <span className="text-xs text-slate-400 font-mono">{localItems.length} item{localItems.length === 1 ? "" : "s"}</span>
+        <button onClick={handleExportContent} className="ml-auto px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs text-slate-500 inline-flex items-center gap-1">
+          <Download size={12} /> Export content bank
+        </button>
+        <button onClick={() => setShowImport((v) => !v)} className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs text-slate-500">
+          {showImport ? "Hide import" : "Import JSON"}
+        </button>
+      </div>
+
+      {showImport && (
+        <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-slate-50">
+          <p className="text-xs text-slate-500 mb-2">Paste a JSON array of items. Each item's own topic/tier determines where it's saved -- it doesn't need to match the selection above. Matching an existing item's id updates it; a new id adds it.</p>
+          <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={6}
+            className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-white text-xs font-mono mb-2" placeholder='[ { "id": "1.1-custom-1", "course": "csa", "topic": "1.1", "tier": "basic", "lo": "1.1.A", "prompt": "...", "choices": ["...","...","...","..."], "answer": 0, "explanation": "..." } ]' />
+          <button onClick={handleImport} disabled={!importText.trim()} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs disabled:opacity-40">Import</button>
+          {importMsg && <p className="text-xs text-slate-500 mt-2">{importMsg}</p>}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 mb-4">
+        {localItems.map((item, i) => (
+          <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono text-slate-400">{item.id}</span>
+              <button onClick={() => deleteItem(i)} title="Delete item" className="text-slate-400 hover:text-rose-500">
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <textarea value={item.prompt} onChange={(e) => updateItem(i, { prompt: e.target.value })} rows={2}
+              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm mb-2 font-mono" placeholder="Question prompt" />
+            {item.choices.map((choice, ci) => (
+              <div key={ci} className="flex items-center gap-2 mb-1.5">
+                <input type="radio" checked={item.answer === ci} onChange={() => updateItem(i, { answer: ci })} title="Mark as the correct answer" />
+                <input value={choice} onChange={(e) => updateChoice(i, ci, e.target.value)}
+                  className={`flex-1 px-2 py-1 rounded-lg border text-sm ${item.answer === ci ? "border-emerald-300 bg-emerald-50" : "border-slate-200"}`} placeholder={`Choice ${ci + 1}`} />
+              </div>
+            ))}
+            <textarea value={item.explanation} onChange={(e) => updateItem(i, { explanation: e.target.value })} rows={2}
+              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm mt-2" placeholder="Explanation" />
+          </div>
+        ))}
+        {localItems.length === 0 && (
+          <p className="text-slate-400 text-sm text-center py-6 font-mono">No items yet for this topic/tier -- add one below.</p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={addItem} className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm text-slate-600 inline-flex items-center gap-1">
+          <Plus size={14} /> Add item
+        </button>
+        <button onClick={handleSave} disabled={!dirty || saving}
+          className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 inline-flex items-center gap-2">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null} Save changes
+        </button>
+        {saveMsg && <span className="text-xs text-emerald-600">{saveMsg}</span>}
+        {dirty && !saveMsg && <span className="text-xs text-amber-600">Unsaved changes</span>}
+      </div>
     </div>
   );
 }
@@ -1430,6 +1643,8 @@ export default function App() {
   const [section, setSection] = useState(COURSES.csa.sections[0]);
   const [roster, setRoster] = useState([]);
   const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [itemBank, setItemBank] = useState([]);
+  const [itemBankLoaded, setItemBankLoaded] = useState(false);
 
   const changeCourse = (newCourse) => {
     setCourse(newCourse);
@@ -1445,6 +1660,14 @@ export default function App() {
       setRosterLoaded(true);
     });
   }, [course, section]);
+
+  useEffect(() => {
+    setItemBankLoaded(false);
+    loadAllContent(UNITS[course], course).then((bank) => {
+      setItemBank(bank);
+      setItemBankLoaded(true);
+    });
+  }, [course]);
 
   return (
     <div className="min-h-screen bg-slate-50" style={{ backgroundImage: "radial-gradient(circle, #e2e8f0 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
@@ -1468,14 +1691,14 @@ export default function App() {
           <CourseSectionBar course={course} section={section} onCourse={changeCourse} onSection={setSection} />
         </div>
 
-        {!rosterLoaded ? (
+        {!rosterLoaded || !itemBankLoaded ? (
           <div className="flex items-center justify-center mt-16 text-slate-400"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>
         ) : mode === "student" ? (
-          <StudentView course={course} section={section} roster={roster} />
+          <StudentView course={course} section={section} roster={roster} itemBank={itemBank} />
         ) : !teacherAuthed ? (
           <TeacherGate onUnlock={() => setTeacherAuthed(true)} />
         ) : (
-          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} onLock={() => setTeacherAuthed(false)} />
+          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} onLock={() => setTeacherAuthed(false)} itemBank={itemBank} onItemBankChange={setItemBank} />
         )}
       </div>
     </div>
