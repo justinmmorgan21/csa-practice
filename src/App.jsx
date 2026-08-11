@@ -48,7 +48,7 @@ const UNITS = {
       segments: [
         { id: "u1sA", label: "Benchmark A (Topics 1.1-1.4)", topics: ["1.1", "1.2", "1.3", "1.4"] },
         { id: "u1sB", label: "Benchmark B (Topics 1.5-1.9)", topics: ["1.5", "1.6", "1.7", "1.8", "1.9"] },
-        // Benchmark C (1.10-1.15) will be added here later.
+        { id: "u1sC", label: "Benchmark C (Topics 1.10-1.15)", topics: ["1.10", "1.11", "1.12", "1.13", "1.14", "1.15"] },
       ],
     },
     // Units 2-4 will be added here later.
@@ -68,6 +68,12 @@ const TOPIC_LABELS = {
   "1.7": "API and Libraries",
   "1.8": "Documentation with Comments",
   "1.9": "Method Signatures",
+  "1.10": "Calling Class Methods",
+  "1.11": "Math Class",
+  "1.12": "Objects: Instances of Classes",
+  "1.13": "Object Creation and Instantiation",
+  "1.14": "Calling Instance Methods",
+  "1.15": "String Manipulation",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
