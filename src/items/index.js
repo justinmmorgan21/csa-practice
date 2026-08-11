@@ -5,7 +5,11 @@ import { UNIT1_SEGMENT_A_ITEMS } from "./unit1-segmentA";
 import { UNIT1_SEGMENT_B_ITEMS } from "./unit1-segmentB";
 import { UNIT1_SEGMENT_C_ITEMS } from "./unit1-segmentC";
 
-export const ITEM_BANK = [
+// This is the seed/fallback content -- the live, editable version now lives
+// in Firestore (see contentStore.js). This static bank is only used to
+// auto-seed Firestore the first time each segment is loaded, and as the
+// data source if we ever need to revert away from the live-editing setup.
+export const STATIC_ITEM_BANK = [
   ...UNIT1_SEGMENT_A_ITEMS,
   ...UNIT1_SEGMENT_B_ITEMS,
   ...UNIT1_SEGMENT_C_ITEMS,
