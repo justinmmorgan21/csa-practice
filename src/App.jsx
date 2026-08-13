@@ -78,6 +78,8 @@ const TOPIC_LABELS = {
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
+const ROUND_SIZE = 4; // questions asked per round
+const PASS_THRESHOLD = 3; // correct answers needed to pass a round
 const DISPLAY_STAGES = ["basic", "intermediate", "complex", "mastered"];
 const TIER_LABELS = { basic: "Basic", intermediate: "Intermediate", complex: "Complex", mastered: "Mastered" };
 const TIER_COLORS = {
@@ -426,7 +428,7 @@ function StudentView({ course, section, roster, itemBank }) {
 
   const startRound = () => {
     const pool = itemsForTopicTier(itemBank, course, studentData.topic, studentData.tier);
-    const items = sample(pool, Math.min(3, pool.length));
+    const items = sample(pool, Math.min(ROUND_SIZE, pool.length));
     setRound({ items, index: 0, answers: [] });
     setSelectedChoice(null);
     setShowFeedback(false);
@@ -449,7 +451,7 @@ function StudentView({ course, section, roster, itemBank }) {
     }
 
     const score = newAnswers.filter((a) => a.correct).length;
-    const passed = score >= 2;
+    const passed = score >= PASS_THRESHOLD;
     let updated = { ...studentData, history: [...studentData.history, ...newAnswers] };
     let topicAdvancedTo = null;
     let segmentLocked = false;
@@ -668,7 +670,7 @@ function StudentView({ course, section, roster, itemBank }) {
 
       {!isLocked && !isFlagged && roundResult && (
         <div className={`p-6 rounded-xl border text-center ${roundResult.passed ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
-          <p className={`font-semibold ${roundResult.passed ? "text-emerald-800" : "text-amber-800"}`}>{roundResult.score} / 3 correct</p>
+          <p className={`font-semibold ${roundResult.passed ? "text-emerald-800" : "text-amber-800"}`}>{roundResult.score} / {ROUND_SIZE} correct</p>
           <p className={`text-sm mt-1 ${roundResult.passed ? "text-emerald-700" : "text-amber-700"}`}>
             {roundResult.segmentLocked ? "Benchmark complete! Waiting for Mr. Morgan to unlock the next Benchmark."
               : roundResult.resumedTo ? "Nice work! Picking back up where you left off."
