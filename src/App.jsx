@@ -543,7 +543,7 @@ function StudentView({ course, section, roster, itemBank }) {
         <p className="text-slate-500 text-sm mb-1">Hi, {studentData.displayName}</p>
         <p className="font-mono text-xs text-slate-400 mb-4">Enter your 4-digit PIN</p>
         <input
-          type="tel"
+          type="password"
           inputMode="numeric"
           maxLength={4}
           value={pinInput}
