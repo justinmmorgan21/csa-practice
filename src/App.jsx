@@ -822,7 +822,8 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
         })));
       }
     } catch (err) {
-      setUploadError("Couldn't read that PDF. Make sure it's not a scanned image and try again.");
+      console.error("Roster PDF parsing failed", err);
+      setUploadError(`Couldn't read that PDF: ${err?.message || err}. Make sure it's not a scanned image and try again.`);
     }
     setParsingPdf(false);
   };
