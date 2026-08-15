@@ -807,6 +807,27 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     e.target.value = ""; // reset the input so the same file can be re-picked later
     if (!file) return;
     setUploadError("");
+
+    // A .json file here means it came from the separate roster-converter
+    // tool (which parses the PDF on normal hosting, where pdf.js's worker
+    // works reliably) -- skip PDF parsing entirely and use it directly.
+    if (file.name.toLowerCase().endsWith(".json")) {
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) throw new Error("not an array");
+        setPendingRows(parsed.map((row) => ({
+          editedName: row.editedName || "",
+          idTag: row.idTag || null,
+          include: row.include !== false,
+        })));
+      } catch (err) {
+        console.error("Converted roster file parsing failed", err);
+        setUploadError(`Couldn't read that file: ${err?.message || err}. Make sure it's the file downloaded from the roster converter tool.`);
+      }
+      return;
+    }
+
     setParsingPdf(true);
     try {
       const text = await extractPdfText(file);
@@ -1066,8 +1087,8 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
           <Plus size={16} /> Add
         </button>
         <label className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500 cursor-pointer">
-          {parsingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />} Upload roster PDF
-          <input type="file" accept="application/pdf" onChange={handleRosterFile} disabled={parsingPdf} className="hidden" />
+          {parsingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />} Upload roster PDF or converted file
+          <input type="file" accept="application/pdf,.json" onChange={handleRosterFile} disabled={parsingPdf} className="hidden" />
         </label>
         <button onClick={refresh} title="Refresh progress data" className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           <RotateCcw size={14} /> Refresh
