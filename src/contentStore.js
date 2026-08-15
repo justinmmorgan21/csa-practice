@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { restGetDoc, restSetDoc } from "./firestoreRest";
 import { STATIC_ITEM_BANK } from "./items";
 
 function segmentDocId(course, unitId, segmentId) {
@@ -10,27 +9,15 @@ function segmentDocId(course, unitId, segmentId) {
 // saved to Firestore yet, seeds it from the static bank (scoped to that
 // segment's topics) and writes it in, so it only ever needs to happen once.
 async function loadSegmentItems(course, unitId, segmentId, segmentTopics) {
-  try {
-    const snap = await getDoc(doc(db, "content", segmentDocId(course, unitId, segmentId)));
-    if (snap.exists()) return snap.data().items || [];
-  } catch (e) {
-    console.error("Failed to load segment content", e);
-  }
+  const data = await restGetDoc("content", segmentDocId(course, unitId, segmentId));
+  if (data) return data.items || [];
   const seed = STATIC_ITEM_BANK.filter((it) => it.course === course && segmentTopics.includes(it.topic));
-  try {
-    await setDoc(doc(db, "content", segmentDocId(course, unitId, segmentId)), { items: seed });
-  } catch (e) {
-    console.error("Failed to seed segment content", e);
-  }
+  await restSetDoc("content", segmentDocId(course, unitId, segmentId), { items: seed });
   return seed;
 }
 
 export async function saveSegmentItems(course, unitId, segmentId, items) {
-  try {
-    await setDoc(doc(db, "content", segmentDocId(course, unitId, segmentId)), { items });
-  } catch (e) {
-    console.error("Failed to save segment content", e);
-  }
+  await restSetDoc("content", segmentDocId(course, unitId, segmentId), { items });
 }
 
 // Loads every segment's items for a course and combines them into one flat
