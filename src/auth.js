@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { restGetDoc, restSetDoc } from "./firestoreRest";
 
 // SHA-256 hash using the browser's built-in Web Crypto API -- no extra
 // library needed, and the plain password is never stored anywhere.
@@ -10,19 +9,10 @@ export async function hashPassword(str) {
 }
 
 export async function loadTeacherPasswordHash() {
-  try {
-    const snap = await getDoc(doc(db, "settings", "teacher"));
-    return snap.exists() ? snap.data().passwordHash : null;
-  } catch (e) {
-    console.error("Failed to load teacher password", e);
-    return null;
-  }
+  const data = await restGetDoc("settings", "teacher");
+  return data ? data.passwordHash : null;
 }
 
 export async function saveTeacherPasswordHash(hash) {
-  try {
-    await setDoc(doc(db, "settings", "teacher"), { passwordHash: hash });
-  } catch (e) {
-    console.error("Failed to save teacher password", e);
-  }
+  await restSetDoc("settings", "teacher", { passwordHash: hash });
 }
