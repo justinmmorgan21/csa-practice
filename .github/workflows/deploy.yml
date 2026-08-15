@@ -38,4 +38,4 @@ jobs:
         run: clasp push --force
 
       - name: Update the live deployment
-        run: clasp deploy --deploymentId REPLACE_WITH_YOUR_DEPLOYMENT_ID --description "Automated deploy from GitHub Actions"
+        run: clasp deploy --deploymentId AKfycbwGou7crZWOF4Thhk7eHWHNJtQIgmiOTtI9WT9sXBAgNJlgCmsatwUxnXC6j89TL3Gl5A --description "Automated deploy from GitHub Actions"
