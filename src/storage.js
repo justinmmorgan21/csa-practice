@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { restGetDoc, restSetDoc, restDeleteDoc } from "./firestoreRest";
 
 function rosterDocId(course, section) {
   return `${course}_${section}`;
@@ -9,45 +8,22 @@ function studentDocId(course, section, slug) {
 }
 
 export async function loadRoster(course, section) {
-  try {
-    const snap = await getDoc(doc(db, "rosters", rosterDocId(course, section)));
-    return snap.exists() ? snap.data().names || [] : [];
-  } catch (e) {
-    console.error("Failed to load roster", e);
-    return [];
-  }
+  const data = await restGetDoc("rosters", rosterDocId(course, section));
+  return data ? data.names || [] : [];
 }
 
 export async function saveRoster(course, section, names) {
-  try {
-    await setDoc(doc(db, "rosters", rosterDocId(course, section)), { names });
-  } catch (e) {
-    console.error("Failed to save roster", e);
-  }
+  await restSetDoc("rosters", rosterDocId(course, section), { names });
 }
 
 export async function loadStudentRaw(course, section, slug) {
-  try {
-    const snap = await getDoc(doc(db, "students", studentDocId(course, section, slug)));
-    return snap.exists() ? snap.data() : null;
-  } catch (e) {
-    console.error("Failed to load student", e);
-    return null;
-  }
+  return await restGetDoc("students", studentDocId(course, section, slug));
 }
 
 export async function saveStudent(course, section, slug, data) {
-  try {
-    await setDoc(doc(db, "students", studentDocId(course, section, slug)), data);
-  } catch (e) {
-    console.error("Failed to save student", e);
-  }
+  await restSetDoc("students", studentDocId(course, section, slug), data);
 }
 
 export async function deleteStudent(course, section, slug) {
-  try {
-    await deleteDoc(doc(db, "students", studentDocId(course, section, slug)));
-  } catch (e) {
-    console.error("Failed to delete student", e);
-  }
+  await restDeleteDoc("students", studentDocId(course, section, slug));
 }
