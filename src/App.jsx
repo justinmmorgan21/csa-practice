@@ -1142,7 +1142,9 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
       ) : roster.length === 0 ? (
         <p className="text-slate-400 text-sm text-center py-10 font-mono">No students in this section yet -- add one above.</p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <>
+          <p className="text-xs text-slate-400 font-mono mb-3">{roster.length} student{roster.length === 1 ? "" : "s"} in this section</p>
+          <div className="flex flex-col gap-3">
           {[...roster].sort((entryA, entryB) => {
             const a = students[rosterSlug(entryA)], b = students[rosterSlug(entryB)];
             if (!a || !b) return 0;
@@ -1333,6 +1335,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
             );
           })}
         </div>
+        </>
       )}
 
       {pendingPosition && (
