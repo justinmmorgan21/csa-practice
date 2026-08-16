@@ -360,7 +360,7 @@ function MiniTierStrip({ tier }) {
 // ---------------------------------------------------------------------------
 // Course / Section selector (shared header control)
 // ---------------------------------------------------------------------------
-function CourseSectionBar({ course, section, onCourse, onSection }) {
+function CourseSectionBar({ course, section, onCourse, onSection, studentCount }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       <select value={course} onChange={(e) => onCourse(e.target.value)}
@@ -371,6 +371,9 @@ function CourseSectionBar({ course, section, onCourse, onSection }) {
         className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-xs">
         {COURSES[course].sections.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
+      {studentCount !== undefined && (
+        <span className="text-xs text-slate-400 font-mono">{studentCount} student{studentCount === 1 ? "" : "s"}</span>
+      )}
     </div>
   );
 }
@@ -1165,7 +1168,6 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
         <p className="text-slate-400 text-sm text-center py-10 font-mono">No students in this section yet -- add one above.</p>
       ) : (
         <>
-          <p className="text-xs text-slate-400 font-mono mb-3">{roster.length} student{roster.length === 1 ? "" : "s"} in this section</p>
           <div className="flex flex-col gap-3">
           {[...roster].sort((entryA, entryB) => {
             const a = students[rosterSlug(entryA)], b = students[rosterSlug(entryB)];
@@ -1715,7 +1717,7 @@ export default function App() {
         </div>
 
         <div className="mb-6">
-          <CourseSectionBar course={course} section={section} onCourse={changeCourse} onSection={setSection} />
+          <CourseSectionBar course={course} section={section} onCourse={changeCourse} onSection={setSection} studentCount={mode === "teacher" ? roster.length : undefined} />
         </div>
 
         {!rosterLoaded || !itemBankLoaded ? (
