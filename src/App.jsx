@@ -236,6 +236,7 @@ function emptyStudent(displayName, course, idTag = null) {
     history: [],
     createdAt: Date.now(),
     resumePoint: null, // set by a teacher's "return to where they left off" override
+    inProgressRound: null, // {topic, tier, itemIds, answers} -- lets a student resume mid-round
   };
 }
 
@@ -424,9 +425,27 @@ function StudentView({ course, section, roster, itemBank }) {
     let data = await loadStudentRaw(course, section, slug);
     if (!data) { data = emptyStudent(entry.name, course, entry.idTag); await saveStudent(course, section, slug, data); }
     else if (!data.pin) { data = ensurePin(data); await saveStudent(course, section, slug, data); }
+
+    // Resume an interrupted round, if one exists and still looks valid --
+    // matches the student's current topic/tier (hasn't been manually moved
+    // since), and every sampled question still exists in the item bank
+    // (hasn't been deleted via the Content Editor since).
+    if (data.inProgressRound) {
+      const ip = data.inProgressRound;
+      const stillValid = ip.topic === data.topic && ip.tier === data.tier &&
+        ip.itemIds.every((id) => itemBank.some((it) => it.id === id));
+      if (stillValid) {
+        const items = ip.itemIds.map((id) => itemBank.find((it) => it.id === id));
+        setRound({ items, index: ip.answers.length, answers: ip.answers });
+      } else {
+        data = { ...data, inProgressRound: null };
+        await saveStudent(course, section, slug, data);
+      }
+    }
+
     setStudentData(data);
     setLoading(false);
-  }, [course, section]);
+  }, [course, section, itemBank]);
 
   const submitPin = () => {
     if (pinInput === studentData.pin) {
@@ -451,6 +470,11 @@ function StudentView({ course, section, roster, itemBank }) {
     setShowFeedback(false);
     setRoundResult(null);
     setShowReview(false);
+    // Persist immediately so this round can be resumed if the student
+    // disconnects (closes the tab, loses wifi, etc.) before finishing it.
+    const updated = { ...studentData, inProgressRound: { topic: studentData.topic, tier: studentData.tier, itemIds: items.map((i) => i.id), answers: [] } };
+    setStudentData(updated);
+    saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
   };
 
   const submitAnswer = () => { if (selectedChoice !== null) setShowFeedback(true); };
@@ -464,12 +488,17 @@ function StudentView({ course, section, roster, itemBank }) {
       setRound({ ...round, index: round.index + 1, answers: newAnswers });
       setSelectedChoice(null);
       setShowFeedback(false);
+      // Save progress so far -- if the student stops here, they'll resume
+      // right where they left off instead of losing these answers.
+      const midUpdate = { ...studentData, inProgressRound: { ...studentData.inProgressRound, answers: newAnswers } };
+      setStudentData(midUpdate);
+      await saveStudent(course, section, rosterSlug({ name: midUpdate.displayName, idTag: midUpdate.idTag }), midUpdate);
       return;
     }
 
     const score = newAnswers.filter((a) => a.correct).length;
     const passed = score >= PASS_THRESHOLD;
-    let updated = { ...studentData, history: [...studentData.history, ...newAnswers] };
+    let updated = { ...studentData, history: [...studentData.history, ...newAnswers], inProgressRound: null };
     let topicAdvancedTo = null;
     let segmentLocked = false;
     let resumedTo = null;
@@ -1072,7 +1101,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     const slug = rosterSlug(entry);
     const data = students[slug];
     if (!data) return;
-    const updated = { ...data, ...newPos, locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: resumePoint || null };
+    const updated = { ...data, ...newPos, locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: resumePoint || null, inProgressRound: null };
     await saveStudent(course, section, slug, updated);
     setStudents((s) => ({ ...s, [slug]: updated }));
     setSettingSlug(null);
