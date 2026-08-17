@@ -230,6 +230,162 @@ export const REVIEWS = {
     ],
     commonMistake: "Don't assume passing an object into a method fully protects it from changes -- call by value protects the reference variable, not the object's own internal state.",
   },
+
+  "2.1-basic": {
+    title: "Algorithms: Sequencing, Selection, Repetition",
+    concept: "Every algorithm can be built from three building blocks: sequencing (steps in order), selection (a choice based on true/false), and repetition (repeating until a desired outcome is reached). These can be described in plain language or diagrams -- they don't require actual code.",
+    examples: [
+      { text: "\"First put on socks, then shoes\" is sequencing. \"If it's raining, bring an umbrella\" is selection. \"Keep knocking until someone answers\" is repetition." },
+    ],
+    commonMistake: "Don't assume an algorithm has to be written as code -- a recipe or a set of directions can be a perfectly valid algorithm.",
+  },
+  "2.1-intermediate": {
+    title: "Combining Selection and Repetition",
+    concept: "Real algorithms usually combine multiple building blocks. A repeated process (repetition) often contains a decision inside it (selection), and the order of steps can change the outcome -- especially when one step's result feeds into a later step.",
+    examples: [
+      { text: "\"Review a flashcard. If you got it wrong, put it back in the pile. Keep going until the pile is empty\" combines selection (checking if wrong) with repetition (continuing until empty)." },
+    ],
+    commonMistake: "When identifying building blocks in a scenario, look for the true/false decision (selection) separately from the repeated action (repetition) -- they often appear together but are still distinct concepts.",
+  },
+  "2.1-complex": {
+    title: "Verifying Algorithm Correctness and Order",
+    concept: "A tricky algorithm-design skill is checking whether a sequence of steps produces the CORRECT result for every possible input, not just the case you happen to picture first. Order of operations matters a lot -- especially when one step's condition should be checked before another step changes the data it depends on.",
+    examples: [
+      { text: "A two-step \"sort three numbers\" algorithm (compare x,y then compare y,z) can leave x and y out of order again after the second swap -- a third comparison is needed to guarantee full sorting." },
+    ],
+    commonMistake: "Don't assume an algorithm is correct just because it works for one example -- check whether an earlier step's result could be undone or invalidated by a later step.",
+  },
+
+  "2.2-basic": {
+    title: "Boolean Expressions & Relational Operators",
+    concept: "Relational operators (==, !=, <, >, <=, >=) compare two values and always produce a Boolean (true/false) result. == checks equality; = is assignment, a completely different operator, and a very common point of confusion.",
+    examples: [
+      { text: "5 > 3 evaluates to true. 4 == 4 evaluates to true. Writing x = 5 assigns 5 to x -- it does NOT compare x to 5." },
+    ],
+    commonMistake: "Don't confuse = (assignment) with == (comparison) -- this is one of the most common early mistakes, and Java treats them very differently.",
+  },
+  "2.2-intermediate": {
+    title: "Evaluating Relational Expressions with Variables",
+    concept: "When a relational expression involves variables and arithmetic, the arithmetic is computed first, and THEN compared. Work through the math one step at a time before applying the comparison.",
+    examples: [
+      { text: "int x = 7; int y = 3; boolean result = (x - y) > y; -- first x-y is computed (4), then 4 > 3 is checked, giving true." },
+    ],
+    commonMistake: "Always finish evaluating the arithmetic on each side of a relational operator BEFORE applying the comparison -- don't compare partway through a calculation.",
+  },
+  "2.2-complex": {
+    title: "Reference Comparison, Precision, and Division Traps",
+    concept: "For primitives, == compares actual values. For reference types (objects, Strings), == compares whether two variables point to the SAME object, not whether their contents match. Also watch for int division truncating before a comparison happens, and division by zero throwing an exception before any comparison can occur.",
+    examples: [
+      { text: "Point p1 = new Point(3,4); Point p2 = new Point(3,4); -- p1 == p2 is false, even though their coordinates match, since they're two separate objects." },
+      { text: "int a = 5, b = 2; boolean result = (a / b) == 2.5; -- a/b is int division, giving 2 (not 2.5), so result is false -- the precision was already lost before the comparison." },
+    ],
+    commonMistake: "Don't assume == compares content for objects -- two separately created objects are never == to each other, no matter how similar their data is.",
+  },
+
+  "2.3-basic": {
+    title: "if and if-else Statements",
+    concept: "A one-way if statement runs its body only when its condition is true -- otherwise, nothing happens. A two-way if-else provides an alternate body that runs specifically when the condition is false. Exactly one branch of an if-else ever runs, never both.",
+    examples: [
+      { text: "if (x > 5) { println(\"big\"); } else { println(\"small\"); } -- if x is 3, this prints \"small\", since the else branch runs when the condition is false." },
+    ],
+    commonMistake: "Don't think both branches of an if-else can run together -- exactly one of them executes, based on whether the condition is true or false.",
+  },
+  "2.3-intermediate": {
+    title: "Tracing if/if-else with Changing Variables",
+    concept: "When tracing code with an if statement, check the condition using the variables' CURRENT values at that point in the program, then follow only the branch that applies. Statements after the if (outside its braces) always run regardless of the condition.",
+    examples: [
+      { text: "int x = 6; if (x > 10) { x += 100; } x += 1; -- x > 10 is false, so x += 100 is skipped, but x += 1 still runs since it's outside the if. Final x = 7." },
+    ],
+    commonMistake: "Watch carefully for which statements are actually INSIDE the if's braces versus just placed after it -- statements after the closing brace always run, condition or not.",
+  },
+  "2.3-complex": {
+    title: "Syntax Traps: Braces, Semicolons, and =",
+    concept: "Without braces, only the single next statement belongs to an if -- later lines run regardless of the condition, no matter how they're indented. A stray semicolon right after an if's condition creates an empty body. And x = true (assignment) is different from x == true (comparison) -- though when both sides are already boolean, an assignment like flag = true is legal and evaluates to the assigned value.",
+    examples: [
+      { text: "if (x > 0)\\n  println(\"positive\");\\n  println(\"done\");\\n-- only \"positive\" is conditional; \"done\" always runs, regardless of indentation, since it's a separate statement." },
+      { text: "if (a == b);\\n{ println(\"equal\"); }\\n-- the semicolon creates an empty if body; the braced block below runs unconditionally, regardless of a and b." },
+    ],
+    commonMistake: "Indentation is just for humans -- Java only cares about braces. A statement that LOOKS nested by its spacing may not actually be inside the if at all.",
+  },
+
+  "2.4-basic": {
+    title: "Nested if and Multiway Selection",
+    concept: "A nested if is an if-type statement placed inside another one -- the inner condition is only checked if the outer condition is true. An if-else-if chain checks conditions in order and runs AT MOST ONE matching branch; a trailing else catches everything else.",
+    examples: [
+      { text: "if (score >= 90) { print(\"A\"); } else if (score >= 80) { print(\"B\"); } else { print(\"C\"); } -- for score=85, only \"B\" prints, even though score also satisfies neither \"A\" nor \"C\"'s conditions." },
+    ],
+    commonMistake: "In an if-else-if chain, only the FIRST matching condition's branch runs -- later conditions are never even checked once an earlier one matches.",
+  },
+  "2.4-intermediate": {
+    title: "Tracing Nested Conditions and Chains",
+    concept: "When a condition is nested inside another, the inner check only happens if you actually enter the outer branch first. If the outer condition is false, the inner if is never reached at all -- its value doesn't matter.",
+    examples: [
+      { text: "if (age >= 18) { if (hasLicense) { print(\"Can drive\"); } else { print(\"Needs a license\"); } } else { print(\"Too young\"); }\\nIf age is 16, the outer else runs -- hasLicense's value is never even checked." },
+    ],
+    commonMistake: "Don't check the inner condition's value if the outer condition is already false -- the inner if is simply never reached in that case.",
+  },
+  "2.4-complex": {
+    title: "else-if Chains vs. Separate ifs, and Dangling else",
+    concept: "An else-if chain stops after the first true condition -- separate, independent if statements each get checked regardless of earlier results, so multiple could apply. Without braces, Java matches each else to the NEAREST unmatched if, which can produce surprising results when if statements are nested without braces.",
+    examples: [
+      { text: "if (score>=90) print A; if (score>=80) print B; if (score>=70) print C; -- for score=95, ALL THREE print, since these are independent statements, not a chain." },
+      { text: "if (x>5) if (x>20) print(\"big\"); else print(\"medium\"); else print(\"small\");\\nWithout braces, the else pairs with the nearest if (x>20), not the outer one -- a classic \"dangling else\" trap." },
+    ],
+    commonMistake: "If you want MULTIPLE messages able to print for multiple true conditions, use separate if statements, not else-if -- else-if is specifically for \"only one of these should happen.\"",
+  },
+
+  "2.5-basic": {
+    title: "Compound Booleans: !, &&, ||",
+    concept: "! reverses a Boolean value. && (AND) is true only when BOTH sides are true. || (OR) is true when AT LEAST ONE side is true. Precedence order is ! first, then &&, then ||.",
+    examples: [
+      { text: "true && false is false (both must be true). true || false is true (only one needs to be true). !true is false." },
+    ],
+    commonMistake: "Remember && requires BOTH conditions, while || only needs ONE -- mixing these up is one of the most common mistakes with compound expressions.",
+  },
+  "2.5-intermediate": {
+    title: "Evaluating Compound Expressions with Precedence",
+    concept: "When an expression mixes &&, ||, and !, precedence determines the order: ! happens first, then &&, then ||. When in doubt, mentally add parentheses around the && parts first.",
+    examples: [
+      { text: "true || false && false -- && binds tighter, so this is true || (false && false) = true || false = true." },
+    ],
+    commonMistake: "Don't evaluate a mixed &&/|| expression strictly left to right -- && groups with its neighbors first, regardless of where it appears in the expression.",
+  },
+  "2.5-complex": {
+    title: "Short-Circuit Evaluation",
+    concept: "For a && b, if a is already false, b is never evaluated at all -- the result must be false regardless. For a || b, if a is already true, b is never evaluated -- the result must be true regardless. This is called short-circuit evaluation, and it's often used deliberately to avoid errors.",
+    examples: [
+      { text: "if (x != 0 && (10 / x) > 1) -- if x is 0, x != 0 is false, so (10/x) is NEVER evaluated, safely avoiding a division-by-zero crash." },
+      { text: "if (s != null && s.length() > 0) -- if s is null, the second part (which would crash) is never reached, thanks to short-circuiting." },
+    ],
+    commonMistake: "Don't assume both sides of && or || always get evaluated -- if a method call on the right side has an important side effect (like printing or logging), short-circuiting might skip it entirely.",
+  },
+
+  "2.6-basic": {
+    title: "Equivalent Expressions & De Morgan's Law",
+    concept: "Two Boolean expressions are equivalent if they produce the same result in EVERY possible case. De Morgan's law gives a way to rewrite negated compound expressions: !(a && b) becomes !a || !b, and !(a || b) becomes !a && !b.",
+    examples: [
+      { text: "!(a && b) is equivalent to !a || !b. !(a || b) is equivalent to !a && !b -- notice the operator (&&/||) flips each time." },
+    ],
+    commonMistake: "Don't mix up the two forms of De Morgan's law -- negating an && expression produces an || (not another &&), and vice versa.",
+  },
+  "2.6-intermediate": {
+    title: "Applying De Morgan's Law & Basic Reference Comparison",
+    concept: "To apply De Morgan's law, distribute the negation across both sides and flip the operator. For object references, == checks whether two variables point to the exact same object -- assigning one reference variable to another (b = a) makes them refer to the SAME object.",
+    examples: [
+      { text: "!(x >= 10 && y <= 20) becomes x < 10 || y > 20, by negating each side and flipping && to ||." },
+      { text: "Robot r1 = new Robot(); Robot r2 = r1; -- r1 == r2 is true, since r2 was assigned r1's exact reference." },
+    ],
+    commonMistake: "When negating a relational operator as part of De Morgan's law, make sure to flip it correctly: > becomes <=, >= becomes <, and so on -- not just to its opposite-sounding word.",
+  },
+  "2.6-complex": {
+    title: "equals() vs ==, and Safe Null-Checking",
+    concept: "== compares object identity (are they the literal same object?); equals() (when properly defined) compares meaningful content. Two separately created objects with matching data are equal by equals() but NOT == to each other. When checking for null, always put null on the safe side of the comparison to avoid a NullPointerException.",
+    examples: [
+      { text: "String s1 = new String(\"hi\"); String s2 = new String(\"hi\"); -- s1 == s2 is false (different objects), but s1.equals(s2) is true (same content)." },
+      { text: "if (obj.equals(null)) is risky -- if obj itself is null, this throws a NullPointerException. obj == null is the safe way to check." },
+    ],
+    commonMistake: "Don't call a method (like .equals()) on something that might be null -- checking == null (or != null) first is always safer.",
+  },
 };
 
 export function getReview(topic, tier) {
