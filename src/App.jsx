@@ -52,7 +52,15 @@ const UNITS = {
         { id: "u1sC", label: "Benchmark C (Topics 1.10-1.15)", topics: ["1.10", "1.11", "1.12", "1.13", "1.14", "1.15"] },
       ],
     },
-    // Units 2-4 will be added here later.
+    {
+      id: "u2",
+      label: "Unit 2: Selection and Iteration",
+      segments: [
+        { id: "u2sA", label: "Benchmark A (Topics 2.1-2.6)", topics: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"] },
+        // Benchmark B (2.7-2.9) and Benchmark C (2.10-2.12) will be added here later.
+      ],
+    },
+    // Units 3-4 will be added here later.
   ],
   cs3: [
     // No content yet.
@@ -75,6 +83,12 @@ const TOPIC_LABELS = {
   "1.13": "Object Creation and Instantiation",
   "1.14": "Calling Instance Methods",
   "1.15": "String Manipulation",
+  "2.1": "Algorithms with Selection and Repetition",
+  "2.2": "Boolean Expressions",
+  "2.3": "if Statements",
+  "2.4": "Nested if Statements",
+  "2.5": "Compound Boolean Expressions",
+  "2.6": "Comparing Boolean Expressions",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
