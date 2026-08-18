@@ -68,7 +68,14 @@ const UNITS = {
         { id: "u3sB", label: "Benchmark B (Topics 3.5-3.9)", topics: ["3.5", "3.6", "3.7", "3.8", "3.9"] },
       ],
     },
-    // Unit 4 will be added here later.
+    {
+      id: "u4",
+      label: "Unit 4: Data Collections",
+      segments: [
+        { id: "u4sA", label: "Benchmark A (Topics 4.1-4.5)", topics: ["4.1", "4.2", "4.3", "4.4", "4.5"] },
+        // Benchmark B (Topics 4.6-4.10) and Benchmark C (Topics 4.11-4.17) will be added here once generated.
+      ],
+    },
   ],
   cs3: [
     // No content yet.
@@ -112,6 +119,11 @@ const TOPIC_LABELS = {
   "3.7": "Class Variables and Methods",
   "3.8": "Scope and Access",
   "3.9": "this Keyword",
+  "4.1": "Ethical and Social Issues Around Data Collection",
+  "4.2": "Introduction to Using Data Sets",
+  "4.3": "Array Creation and Access",
+  "4.4": "Array Traversals",
+  "4.5": "Implementing Array Algorithms",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
