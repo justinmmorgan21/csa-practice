@@ -57,7 +57,7 @@ const UNITS = {
       label: "Unit 2: Selection and Iteration",
       segments: [
         { id: "u2sA", label: "Benchmark A (Topics 2.1-2.6)", topics: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"] },
-        // Benchmark B (2.7-2.9) and Benchmark C (2.10-2.12) will be added here later.
+        { id: "u2sB", label: "Benchmark B (Topics 2.7-2.12)", topics: ["2.7", "2.8", "2.9", "2.10", "2.11", "2.12"] },
       ],
     },
     // Units 3-4 will be added here later.
@@ -89,6 +89,12 @@ const TOPIC_LABELS = {
   "2.4": "Nested if Statements",
   "2.5": "Compound Boolean Expressions",
   "2.6": "Comparing Boolean Expressions",
+  "2.7": "while Loops",
+  "2.8": "for Loops",
+  "2.9": "Implementing Selection & Iteration Algorithms",
+  "2.10": "Implementing String Algorithms",
+  "2.11": "Nested Iteration",
+  "2.12": "Informal Run-Time Analysis",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
