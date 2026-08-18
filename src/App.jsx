@@ -65,7 +65,7 @@ const UNITS = {
       label: "Unit 3: Class Creation",
       segments: [
         { id: "u3sA", label: "Benchmark A (Topics 3.1-3.4)", topics: ["3.1", "3.2", "3.3", "3.4"] },
-        // Benchmark B (Topics 3.5-3.9) will be added here once that segment is generated.
+        { id: "u3sB", label: "Benchmark B (Topics 3.5-3.9)", topics: ["3.5", "3.6", "3.7", "3.8", "3.9"] },
       ],
     },
     // Unit 4 will be added here later.
@@ -107,6 +107,11 @@ const TOPIC_LABELS = {
   "3.2": "Impact of Program Design",
   "3.3": "Anatomy of a Class",
   "3.4": "Constructors",
+  "3.5": "Methods: How to Write Them",
+  "3.6": "Methods: Passing and Returning References of an Object",
+  "3.7": "Class Variables and Methods",
+  "3.8": "Scope and Access",
+  "3.9": "this Keyword",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
