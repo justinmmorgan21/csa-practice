@@ -60,7 +60,15 @@ const UNITS = {
         { id: "u2sB", label: "Benchmark B (Topics 2.7-2.12)", topics: ["2.7", "2.8", "2.9", "2.10", "2.11", "2.12"] },
       ],
     },
-    // Units 3-4 will be added here later.
+    {
+      id: "u3",
+      label: "Unit 3: Class Creation",
+      segments: [
+        { id: "u3sA", label: "Benchmark A (Topics 3.1-3.4)", topics: ["3.1", "3.2", "3.3", "3.4"] },
+        // Benchmark B (Topics 3.5-3.9) will be added here once that segment is generated.
+      ],
+    },
+    // Unit 4 will be added here later.
   ],
   cs3: [
     // No content yet.
@@ -95,6 +103,10 @@ const TOPIC_LABELS = {
   "2.10": "Implementing String Algorithms",
   "2.11": "Nested Iteration",
   "2.12": "Informal Run-Time Analysis",
+  "3.1": "Abstraction and Program Design",
+  "3.2": "Impact of Program Design",
+  "3.3": "Anatomy of a Class",
+  "3.4": "Constructors",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
