@@ -7,6 +7,7 @@ import { UNIT1_SEGMENT_C_ITEMS } from "./unit1-segmentC";
 import { UNIT2_SEGMENT_A_ITEMS } from "./unit2-segmentA";
 import { UNIT2_SEGMENT_B_ITEMS } from "./unit2-segmentB";
 import { UNIT3_SEGMENT_A_ITEMS } from "./unit3-segmentA";
+import { UNIT3_SEGMENT_B_ITEMS } from "./unit3-segmentB";
 
 // This is the seed/fallback content -- the live, editable version now lives
 // in Firestore (see contentStore.js). This static bank is only used to
@@ -19,5 +20,5 @@ export const STATIC_ITEM_BANK = [
   ...UNIT2_SEGMENT_A_ITEMS,
   ...UNIT2_SEGMENT_B_ITEMS,
   ...UNIT3_SEGMENT_A_ITEMS,
-  // ...UNIT3_SEGMENT_B_ITEMS,  <- add once topics 3.5-3.9 are generated
+  ...UNIT3_SEGMENT_B_ITEMS,
 ];
