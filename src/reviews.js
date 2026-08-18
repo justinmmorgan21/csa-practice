@@ -539,6 +539,112 @@ export const REVIEWS = {
     ],
     commonMistake: "Multiplying the outer loop's count by a single 'typical' inner count instead of summing the different inner counts produced by each outer iteration.",
   },
+  "3.1-basic": {
+    title: "Abstraction, Attributes, and Behaviors",
+    concept: "Abstraction means focusing on the essential idea of something while hiding details that are not relevant right now. In class design, data abstraction lets us name a piece of information (like an account's balance) without worrying about how it is stored, while procedural abstraction lets us name an action (like calculating interest) without worrying about how the calculation works internally. Every class is made of attributes (data, declared outside any method) and behaviors (methods, which perform actions). An instance variable holds a value unique to each object, while a class variable holds one value shared by every object of the class.",
+    examples: [
+      { text: "public class Dog\n{\n    private String name;\n    private int age;\n}\nname and age are attributes: pieces of data stored by every Dog object, each with its own values." },
+      { text: "A method bark() that prints a sound is a behavior (an action), not an attribute, even though it is part of the Dog class." },
+    ],
+    commonMistake: "Students often mislabel a method that returns or reports a value (like getAge()) as an attribute simply because it deals with data, when it is actually a behavior.",
+  },
+  "3.1-intermediate": {
+    title: "Designing Attribute and Behavior Sets",
+    concept: "Good class design requires choosing not just what data and actions a class needs, but the most appropriate data type for each attribute and making sure methods and data are not confused with each other. Class diagrams often use a shorthand where '-' marks a private attribute or method and '+' marks a public one; a private attribute is typically paired with public getter (and sometimes setter) methods so other classes can access it safely. Parameters let a single method be reused for many different input values instead of writing nearly identical methods for each case, and instance variables versus class variables should be chosen based on whether a value is unique per object or shared by all objects.",
+    examples: [
+      { text: "public class Ticket\n{\n    - double price\n    + double getPrice()\n}\nprice is private so it cannot be changed directly from outside the class, while getPrice() gives read-only access." },
+      { text: "public double applyDiscount(double price, double percentOff)\nUsing percentOff as a parameter lets one method handle any discount percentage instead of writing a separate method for each one." },
+    ],
+    commonMistake: "Students often pick a data type that technically works but hides meaning, such as using a String to store a numeric price or a combined String instead of separate, correctly typed attributes.",
+  },
+  "3.1-complex": {
+    title: "Full Class Design, Decomposition, and Abstraction Trade-offs",
+    concept: "At an advanced level, class design requires evaluating an entire proposed set of attributes and behaviors at once, checking that each piece of data has an appropriate type, that data and actions are not swapped, and that instance variables versus class variables are chosen correctly based on whether values are unique per object or shared across all objects. Procedural abstraction also allows a method's internal implementation to be changed or improved (for accuracy, efficiency, or storage) as long as its signature and documented behavior stay the same, so no code that calls the method needs to change. Method decomposition, splitting one large method into several focused methods, improves testability, maintainability, and the potential for reusing individual pieces, though it does not by itself guarantee fewer bugs or faster performance.",
+    examples: [
+      { text: "public double calculateFare(double miles, double minutes)\nThe formula inside this method can be completely rewritten (e.g., to add surge pricing) without changing any code that calls calculateFare(miles, minutes), because the signature and what it computes stay the same." },
+      { text: "Splitting one long runGameTurn() method into readMove(), validateMove(), updateBoard(), and checkWin() lets each part be tested on its own and lets validateMove() potentially be reused elsewhere, such as for a hint feature." },
+    ],
+    commonMistake: "Students often assume that decomposing a method or applying abstraction automatically makes a program faster or bug-free, when the real benefits are clarity, maintainability, testability, and reuse.",
+  },
+  "3.2-basic": {
+    title: "System Reliability, Software Impact, and Licensing Basics",
+    concept: "Well-designed software should work correctly under the range of conditions it's likely to encounter, and programmers build this reliability by testing broadly rather than narrowly. Every program that solves a real-world problem can also create effects beyond what its creators intended, and those effects can be helpful, harmful, or both. When a program reuses someone else's code, legal and ethical rules about ownership apply: code published under an open-source license may generally be used according to its stated terms, but anything else usually requires the original owner's permission.",
+    examples: [
+      { text: "A weather app tested only on sunny-day data crashes the first time it processes a hurricane alert." },
+      { text: "A free scheduling tool ends up being used in ways its creators never expected, some helpful and some not." },
+      { text: "A student uses a code snippet from a public repository that is licensed for free reuse as long as the original author is credited." },
+    ],
+    commonMistake: "Students often assume that if a program was created with good intentions or offered for free, it cannot cause harm or cannot require permission to reuse -- but reliability depends on testing and legal use of code depends on licensing terms, not on intent or price.",
+  },
+  "3.2-intermediate": {
+    title: "Weighing Reliability, Impact, and IP Tradeoffs",
+    concept: "At this level, program-design decisions usually involve balancing two competing considerations rather than applying a single rule. A team might weigh faster time-to-market against more thorough testing, knowing that skipped tests leave certain conditions completely unverified. A beneficial program can simultaneously produce a real unintended harm, so recognizing both effects at once, rather than picking only one, is essential. Similarly, reused code might be technically free to use, but that freedom is often conditioned on requirements like attribution, and failing to meet those conditions is still a licensing violation even though no money changed hands.",
+    examples: [
+      { text: "A city's flood-alert software works fine on ordinary days but was never tested under the exact stormy conditions when accurate warnings matter most." },
+      { text: "A popular recommendation algorithm boosts sales for some independent artists while subtly reshaping what kind of music gets made." },
+      { text: "A developer uses an open-source library within its license's rules but forgets the required attribution, technically violating its terms despite the code being free." },
+    ],
+    commonMistake: "Students often pick the single 'good' or 'bad' framing of a scenario instead of recognizing that a program can have both a genuine benefit and a genuine unintended harm at the same time, or that 'free to use' code can still carry binding conditions like attribution.",
+  },
+  "3.2-complex": {
+    title: "Multi-Factor Judgment: Reliability, Ethics, and Licensing Together",
+    concept: "The most advanced scenarios combine reliability, societal or economic impact, and intellectual-property concerns within a single situation, requiring you to identify every real issue present and choose the response that addresses all of them, not just the most obvious one. Overreactions, such as abandoning a whole project, and underreactions, such as ignoring a problem or applying a cosmetic fix, are both worse choices than direct action: investigating licensing status, obtaining permission where required, and testing the specific untested condition that caused a failure. Recognizing which combination of concrete next steps actually resolves the underlying problems, rather than just sounding responsible, is the key skill at this tier.",
+    examples: [
+      { text: "An app with both an unlicensed reused component and an untested edge case draws complaints about a bug and a question about permission on the same day, requiring the team to address both issues directly rather than just one." },
+      { text: "A financial program shows an unintended pattern of unequal outcomes across groups, prompting leadership to investigate and adjust the software rather than deny the problem or scrap it entirely." },
+      { text: "A student project reuses forum code with no stated license and also fails under an untested condition; the right response fixes both the licensing question and the reliability gap instead of picking just one or neither." },
+    ],
+    commonMistake: "Students often select an answer that only fixes one of several problems present, such as addressing the bug but ignoring the licensing question, or reacts to a bad outcome by overreacting (discontinuing the whole project) rather than diagnosing and resolving the specific, addressable causes.",
+  },
+  "3.3-basic": {
+    title: "Public vs. Private: The Basics of Encapsulation",
+    concept: "Encapsulation means hiding a class's implementation details from other classes. The keywords public and private control this: private restricts access to only the declaring class, while public allows access from outside classes too. In this course, class headers and constructors are always written as public, but instance variables should almost always be private so that other classes cannot read or change them directly. Any instance variable declared public can be accessed with dot notation (like myObject.fieldName) from anywhere, which breaks encapsulation.",
+    examples: [
+      { text: "public class Coupon\n{\n    private double discount;\n    public String code;\n}\n// In another class, with a properly instantiated Coupon object myCoupon:\ndouble d = myCoupon.discount;\n// does NOT compile - discount is private\nString c = myCoupon.code;\n// compiles fine - code is public" },
+    ],
+    commonMistake: "Students often assume that if a variable exists and has been assigned a value, any class can read it with dot notation, forgetting that private strictly blocks that access regardless of whether the value has been set.",
+  },
+  "3.3-intermediate": {
+    title: "Mixing Public and Private Members in a Class",
+    concept: "A realistic class combines a public constructor, private instance variables, and a mix of public and private methods. Public methods are the class's interface: they can be called both from inside and outside the class, and they are the intended way for other classes to interact with an object's private data. Private methods act as internal helpers; they can only be called by other code inside the same class, never directly from outside. When tracing code, check each member's access level individually, since a class can have some public and some private members at the same time.",
+    examples: [
+      { text: "public class Kettle\n{\n    private double waterTemp;\n    public Kettle(double t)\n    {\n        waterTemp = t;\n    }\n    private void heatUp()\n    {\n        waterTemp = waterTemp + 5.0;\n    }\n    public void boil()\n    {\n        heatUp();\n        heatUp();\n    }\n}\n// Outside the class: kettle.boil() compiles (public)\n// kettle.heatUp() does NOT compile (private)" },
+    ],
+    commonMistake: "Students often think that if a public method calls a private method internally, the whole method call chain becomes inaccessible from outside; in reality, only the direct call to the private method from outside the class fails, while calling the public method that wraps it works fine.",
+  },
+  "3.3-complex": {
+    title: "Designing and Debugging Fully Encapsulated Classes",
+    concept: "At this level, encapsulation questions ask you to evaluate or fix an entire class design against a specification: which members should be public, which private, and why. A key nuance is that private restricts access to the declaring class as a whole, not to a single object; so a method inside a class can access the private instance variables of any object of that same class, including one passed in as a parameter. When debugging a class that fails to compile, look for external code trying to use dot notation directly on a private field or private method instead of going through a public accessor or public method.",
+    examples: [
+      { text: "public class Coin\n{\n    private int value;\n    public Coin(int v)\n    {\n        value = v;\n    }\n    public boolean isWorthMoreThan(Coin other)\n    {\n        return value > other.value;\n        // allowed: other.value is accessed from inside the Coin class\n    }\n}" },
+    ],
+    commonMistake: "Students often believe that accessing other.value inside a method of the same class is illegal because value is private, not realizing that private access is restricted by class, not by object instance.",
+  },
+  "3.4-basic": {
+    title: "Constructors and Default Values",
+    concept: "A constructor is a special block of code that runs when an object is created with new, and its job is to set the initial state of the object by giving values to its instance variables. If a class has no constructor written at all, Java automatically supplies a no-argument default constructor. That default constructor sets every instance variable to its type's default value: 0 for int, 0.0 for double, false for boolean, and null for any reference type such as String or a user-defined class.",
+    examples: [
+      { text: "public class Marble\n{\n    private String color;\n    public Marble(String startColor)\n    {\n        color = startColor;\n    }\n}\nMarble m = new Marble(\"blue\");\n// m's color is now \"blue\"" },
+      { text: "public class Timer\n{\n    private int seconds;\n}\nTimer t = new Timer();\n// no constructor was written, so seconds defaults to 0" },
+    ],
+    commonMistake: "Students often assume an unset int or boolean field is left undefined, or that an unset String defaults to an empty string \"\", rather than remembering that Java always assigns 0, 0.0, false, or null automatically.",
+  },
+  "3.4-intermediate": {
+    title: "Matching Parameters to Instance Variables",
+    concept: "Many constructor bugs come from confusing a constructor's parameters with the class's instance variables, especially when an assignment statement goes in the wrong direction, such as writing parameter = parameter instead of instanceVariable = parameter. A class can also define more than one constructor with different parameter lists, called overloading; Java chooses which constructor to run based on the number, order, and types of the arguments in the new call. Once a class defines any constructor of its own, the automatic no-argument default constructor is no longer available.",
+    examples: [
+      { text: "public class Pet\n{\n    private String name;\n    private int age;\n    public Pet(String petName, int petAge)\n    {\n        name = petName;\n        petAge = age;\n    }\n}\nPet p = new Pet(\"Rex\", 4);\n// name becomes \"Rex\", but age stays 0 because petAge = age assigns backwards" },
+    ],
+    commonMistake: "Students frequently write the assignment in the wrong direction, assigning the instance variable's default value to the parameter, or give a parameter the exact same name as its instance variable, which causes a self-assignment that leaves the instance variable at its default.",
+  },
+  "3.4-complex": {
+    title: "Defensive Copying and Tracing Object State",
+    concept: "When a constructor parameter is a mutable object, such as a user-defined class with mutator methods, simply assigning the instance variable to that parameter (instanceVariable = parameter) makes the instance variable an alias for the original object. Any later change made through the original reference will also be visible through the instance variable, and vice versa. To prevent this, a constructor should build a brand-new object using the parameter's current values, such as instanceVariable = new SomeClass(parameter.getX(), parameter.getY()), so the instance variable refers to an independent copy instead of the original object.",
+    examples: [
+      { text: "public class Point2D\n{\n    private int x;\n    public Point2D(int startX)\n    {\n        x = startX;\n    }\n    public int getX()\n    {\n        return x;\n    }\n    public void setX(int newX)\n    {\n        x = newX;\n    }\n}\npublic class Container\n{\n    private Point2D corner;\n    public Container(Point2D p)\n    {\n        corner = new Point2D(p.getX());\n    }\n}\n// corner is now an independent copy, not an alias of p" },
+    ],
+    commonMistake: "Students often assume that assigning instanceVariable = parameter automatically makes a copy, when in fact it only copies the reference, leaving the instance variable aliased to the original mutable object so that later changes to either one affect both.",
+  },
 };
 
 export function getReview(topic, tier) {
