@@ -711,7 +711,7 @@ function StudentView({ course, section, roster, itemBank }) {
           {review.examples.map((ex, i) => (
             <div key={i} className="mb-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
               <p className="text-xs font-mono text-slate-400 mb-1">Example</p>
-              <p className="text-sm text-slate-700 whitespace-pre-line font-mono">{ex.text}</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap font-mono">{ex.text}</p>
             </div>
           ))}
           <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -767,7 +767,7 @@ function StudentView({ course, section, roster, itemBank }) {
           {review.examples.map((ex, i) => (
             <div key={i} className="mb-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
               <p className="text-xs font-mono text-slate-400 mb-1">Example</p>
-              <p className="text-sm text-slate-700 whitespace-pre-line font-mono">{ex.text}</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap font-mono">{ex.text}</p>
             </div>
           ))}
           <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
