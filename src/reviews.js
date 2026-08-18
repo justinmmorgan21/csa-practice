@@ -386,6 +386,159 @@ export const REVIEWS = {
     ],
     commonMistake: "Don't call a method (like .equals()) on something that might be null -- checking == null (or != null) first is always safer.",
   },
+  "2.7-basic": {
+    title: "The while Loop: Repeating Code",
+    concept: "A while loop repeats a block of code as long as its Boolean condition is true. Before every single pass through the loop body, including the very first, Java checks the condition; if it is false from the start, the body never runs at all (zero times). Each time through the loop, some variable used in the condition must change, or the loop will never stop.",
+    examples: [
+      { text: "int count = 1;\nwhile (count < 4)\n{\n    System.out.print(count);\n    count++;\n}\n// prints 123, then stops because count < 4 is false when count is 4" },
+    ],
+    commonMistake: "Forgetting to update the loop control variable inside the body, which causes the condition to stay true forever and produces an infinite loop.",
+  },
+  "2.7-intermediate": {
+    title: "Tracing while Loops Precisely",
+    concept: "Because the Boolean condition is rechecked before every iteration, small details like using < instead of <=, or placing an update statement before versus after the rest of the body, change exactly which values get processed. To trace a while loop correctly, update one variable at a time in order and re-check the full condition after each full pass through the body, not just at the end.",
+    examples: [
+      { text: "int i = 1;\nint total = 0;\nwhile (i <= 4)\n{\n    i++;\n    total += i;\n}\n// i++ happens before total += i, so the values added are 2,3,4,5 (total = 14), not 1,2,3,4" },
+    ],
+    commonMistake: "Assuming statement order inside the loop body doesn't matter, when incrementing a variable before using it (instead of after) shifts every value used in that iteration.",
+  },
+  "2.7-complex": {
+    title: "Infinite Loops, Overflow, and Loop Equivalence",
+    concept: "The trickiest while loop errors happen when a variable's update skips right over the exact value the condition is checking (like x != 0 when x steps by 3 from 10), or when an int variable overflows: Java wraps overflowed values silently instead of throwing an error, which can make a loop that was supposed to terminate run forever or produce a wildly wrong result. When comparing two loops for true equivalence, trace both completely rather than assuming similar-looking code behaves the same way.",
+    examples: [
+      { text: "int x = 10;\nwhile (x != 0)\n{\n    x -= 3;\n}\n// x goes 10,7,4,1,-2,-5,... and never equals exactly 0, so this loop never terminates" },
+    ],
+    commonMistake: "Assuming int overflow will throw an exception or otherwise stop the loop, when in Java it silently wraps to an unexpected value and can cause the loop to run far longer than intended, or forever.",
+  },
+  "2.8-basic": {
+    title: "The for Loop: Header, Order, and Counting",
+    concept: "A for loop header has three parts separated by semicolons: the initialization (runs once, before anything else), the Boolean expression (checked before every potential iteration, including the very first), and the update (runs after the loop body finishes, right before the Boolean expression is checked again). Whether a loop runs 0, 1, or many times depends entirely on these three parts working together, and whether the bound uses < or <= changes exactly which values the loop control variable takes.",
+    examples: [
+      { text: "for (int i = 0; i < 5; i++)\n{\n    System.out.print(i);\n}\nprints 01234 -- five values, since i stops as soon as i < 5 is false (at i = 5)." },
+      { text: "for (int i = 1; i <= 5; i++)\n{\n    System.out.print(i);\n}\nprints 12345 -- also five values, but starting at 1 and including 5 because of the <= bound." },
+    ],
+    commonMistake: "Confusing < and <= at the loop bound, which silently adds or removes one iteration (an off-by-one error).",
+  },
+  "2.8-intermediate": {
+    title: "Stepping, Counting Down, and Filtering Inside a Loop",
+    concept: "The update in a for loop is not limited to i++ -- it can add or subtract any amount (i += 3, i -= 2) to skip values or count backward, and the loop still stops the instant its Boolean expression becomes false. When the body contains an if statement, only some of the values the loop control variable takes actually get printed or counted, so tracing carefully requires separating \"which values does i take\" from \"which of those values pass the if condition.\"",
+    examples: [
+      { text: "for (int i = 20; i > 0; i -= 5)\n{\n    System.out.print(i);\n}\nprints 2015105 -- i counts down by 5 (20, 15, 10, 5) and stops once i > 0 becomes false at i = 0, so the digits concatenate with no separators." },
+      { text: "for (int i = 1; i <= 12; i++)\n{\n    if (i % 5 == 0)\n    {\n        System.out.print(i);\n    }\n}\nprints 510 -- i still takes every value from 1 to 12, but only multiples of 5 are printed." },
+    ],
+    commonMistake: "Miscounting how many terms a stepped loop produces (e.g., assuming (stop - start) alone gives the count, instead of also accounting for the step size and whether the bound is inclusive).",
+  },
+  "2.8-complex": {
+    title: "for/while Equivalence Traps and Boundary Reasoning",
+    concept: "Any for loop can be rewritten as a while loop by moving the initialization before the loop, using the same Boolean expression as the while condition, and placing the update as the very last statement inside the loop body -- get that placement wrong (update first instead of last, or a mismatched bound) and the two loops silently produce different output despite looking almost identical. At this level, also watch for loop control variables reassigned inside the body (the header's update still fires afterward), compound Boolean conditions in the header, and bounds built from expressions or other variables.",
+    examples: [
+      { text: "for (int i = 1; i <= 3; i++)\n{\n    System.out.print(i);\n}\nprints 123.\nint i = 1;\nwhile (i <= 3)\n{\n    i++;\n    System.out.print(i);\n}\nprints 234 instead -- moving the update before the print shifts every value and adds an extra pass, so the two are NOT equivalent." },
+      { text: "for (int i = 1; i <= 10 && i % 3 != 0; i++)\n{\n    System.out.print(i);\n}\nprints 12 -- the loop stops the moment i = 3 makes i % 3 != 0 false, even though i <= 10 is still true." },
+    ],
+    commonMistake: "When converting a for loop to a while loop, placing the update statement at the start of the loop body instead of the end, which shifts every printed value and can add or remove an iteration.",
+  },
+  "2.9-basic": {
+    title: "The Five Standard Algorithms with Primitive Values",
+    concept: "Before arrays are introduced, several common problems are solved using only int variables and loops: checking divisibility with %, pulling out digits with % and /, counting how many loop values meet a test, tracking a running minimum or maximum, and computing a sum or average. Each pattern uses an accumulator variable (a count, a sum, or a min/max) that is initialized before the loop and updated once per iteration.",
+    examples: [
+      { text: "Checking divisibility:\nif (num % 4 == 0)\n{\n    count++;\n}\nExtracting the last digit:\nint lastDigit = num % 10;" },
+      { text: "Running sum over a fixed range:\nint sum = 0;\nfor (int k = 1; k <= 10; k++)\n{\n    sum += k;\n}\n// sum is now 1 + 2 + ... + 10" },
+    ],
+    commonMistake: "Confusing % (which gives a remainder, used for both divisibility and digit extraction) with / (which gives a truncated quotient, used to discard a digit or advance a count).",
+  },
+  "2.9-intermediate": {
+    title: "Loop Bounds, Accumulator Initialization, and Integer Division",
+    concept: "The same five algorithms appear inside loops whose bounds are easy to get subtly wrong: using < instead of <=, or comparing the accumulator itself to the limit instead of the loop counter. Sum and average problems add another trap: if both the sum and the divisor are declared as int, dividing them truncates any decimal part before it is ever stored in a double, so the cast to double must happen before the division, not after.",
+    examples: [
+      { text: "Off-by-one in a range sum:\nint sum = 0;\nfor (int k = low; k < high; k++)\n{\n    sum += k;\n}\n// This omits high itself; use k <= high to include it." },
+      { text: "Integer division before the cast:\nint sum = 17;\nint count = 5;\ndouble average = sum / count;\n// average is 3.0, not 3.4, because sum / count truncates first.\ndouble correctAverage = sum / (double) count;\n// correctAverage is 3.4" },
+    ],
+    commonMistake: "Writing k < n instead of k <= n (or vice versa) so the loop processes one value too few or too many, especially when n itself would satisfy the criterion being counted or summed.",
+  },
+  "2.9-complex": {
+    title: "Verifying Near-Miss Implementations Against a Specification",
+    concept: "At this level you are often given a documented method (with a precondition and postcondition) and two or three candidate implementations, and must decide which ones actually satisfy the specification for every valid input, not just for one traced example. Classic failure points include initializing max to 0 instead of to the first computed value (which fails whenever every value in the range is negative), using a strict bound like temp > 10 that undercounts whenever a running value lands exactly on a power of ten, and forgetting to add back a boundary term (like high) after a loop that only ran through high - 1.",
+    examples: [
+      { text: "A max-tracking loop that fails on all-negative data:\nint max = 0;\nfor (int k = 1; k <= 3; k++)\n{\n    int value = -k * k;\n    if (value > max)\n    {\n        max = value;\n    }\n}\n// max stays 0, but the true maximum (-1) is never stored." },
+      { text: "A digit-count loop with a boundary trap:\nint count = 1;\nint temp = 105;\nwhile (temp > 10)\n{\n    temp /= 10;\n    count++;\n}\nSystem.out.println(count);\n// Prints 2, but 105 actually has 3 digits -- the condition temp > 10 stops one step too early because temp lands exactly on 10." },
+    ],
+    commonMistake: "Assuming an algorithm that works correctly on one traced example (like a typical num = 12345) must be correct in general, instead of checking boundary cases such as num = 0, all-negative ranges, or values that land exactly on a loop's bound.",
+  },
+  "2.10-basic": {
+    title: "String Basics: charAt, substring, and indexOf",
+    concept: "Standard string algorithms are built from a small set of String methods: charAt(i) gets one character at a position, substring(from, to) extracts a range of characters (from is included, to is excluded), and indexOf(str) searches for a substring and returns its starting position or -1 if it is not found. Simple loops walk through a string one index at a time (using length() to know where to stop) to build a new string, count matches, or test whether a pattern appears. equals() and compareTo() compare whole strings rather than single characters.",
+    examples: [
+      { text: "String str = \"LEMON\";\nSystem.out.println(str.charAt(1));\n// prints E, since indexing starts at 0" },
+      { text: "String str = \"LEMON\";\nSystem.out.println(str.substring(1, 4));\n// prints EMO: characters at indices 1, 2, and 3 (index 4 is excluded)" },
+    ],
+    commonMistake: "Forgetting that substring's second argument is exclusive, so students often include one character too many or too few at the boundary.",
+  },
+  "2.10-intermediate": {
+    title: "Building a Result String in a Loop",
+    concept: "Many string algorithms build up an answer by looping through a string and repeatedly concatenating (+=) a small piece onto a result variable that starts as the empty string. Getting the loop bounds exactly right matters: using i < str.length() versus i <= str.length(), or str.length() versus str.length() - 1, changes whether the last character is included or whether the code crashes with an invalid index. When comparing two implementations meant to do the same thing, check the very first and very last iterations first, since off-by-one errors almost always show up at the boundaries.",
+    examples: [
+      { text: "String str = \"CAB\";\nString result = \"\";\nfor (int i = str.length() - 1; i >= 0; i--)\n{\n    result += str.charAt(i);\n}\n// result becomes \"C\", then \"CB\", then \"CBA\" -- walking backward from the last index and appending each character reverses the string" },
+    ],
+    commonMistake: "Writing a loop bound like i <= str.length() (instead of i < str.length()) or i > 0 (instead of i >= 0), which either causes a runtime exception on an invalid index or silently skips the first or last character.",
+  },
+  "2.10-complex": {
+    title: "Reversal, Counting, and Boundary Traps",
+    concept: "Reversal algorithms walk a string from the last index to the first, appending characters one at a time; small changes to the starting index or stopping condition can shift the whole result, skip a character, or throw an exception. Counting algorithms that search for a substring with indexOf must decide whether to advance one character at a time (to catch overlapping matches) or jump past the whole match (to count only non-overlapping matches) -- these two choices give different answers on strings like \"aaaa\". Always check boundary cases separately: an empty string (length 0), a string of length 1, and what happens when indexOf never finds a match and returns -1, since forgetting to handle -1 can cause an infinite loop or a crash.",
+    examples: [
+      { text: "int pos = str.indexOf(\"ab\");\nwhile (pos != -1)\n{\n    count++;\n    str = str.substring(pos + 1); // advances by 1 char: finds overlapping matches\n    pos = str.indexOf(\"ab\");\n}" },
+    ],
+    commonMistake: "Advancing the search position incorrectly after a match (for example, not moving forward at all, or using substring(pos) instead of substring(pos + 1)), which leaves the same match in place and causes the loop to run forever.",
+  },
+  "2.11-basic": {
+    title: "Nested Loops: The Inner Loop Finishes First",
+    concept: "A nested loop is a loop placed inside the body of another loop. Each time the outer loop's body runs once, the entire inner loop must run through all of its iterations before the outer loop is allowed to move to its next iteration. When both loops have a fixed, simple bound, the total number of times the inner statement executes is the number of outer iterations multiplied by the number of inner iterations.",
+    examples: [
+      { text: "for (int i = 0; i < 3; i++)\n{\n    for (int j = 0; j < 4; j++)\n    {\n        System.out.print(\"*\");\n    }\n}\nThis prints 3 * 4 = 12 asterisks total, because the inner loop runs 4 times for each of the 3 outer iterations." },
+    ],
+    commonMistake: "Students often add the two loop bounds instead of multiplying them, incorrectly guessing 3 + 4 = 7 instead of 3 * 4 = 12.",
+  },
+  "2.11-intermediate": {
+    title: "Triangular Patterns: When the Inner Bound Depends on the Outer Variable",
+    concept: "In many nested loops, the inner loop's starting or ending bound is written in terms of the outer loop's control variable (such as j <= i) rather than a fixed number. This makes the inner loop run a different number of times on each pass of the outer loop, producing triangular or staircase patterns in the output, and it means the total iteration count must be found by adding up a changing amount for each outer iteration rather than by simple multiplication.",
+    examples: [
+      { text: "for (int i = 1; i <= 4; i++)\n{\n    for (int j = 1; j <= i; j++)\n    {\n        System.out.print(\"*\");\n    }\n    System.out.println();\n}\nThis prints:\n*\n**\n***\n****\nbecause the inner loop runs i times on each row, so the total number of asterisks is 1 + 2 + 3 + 4 = 10." },
+    ],
+    commonMistake: "Students often use j < i instead of j <= i (or vice versa), which shifts every row's length by one and produces a pattern that starts or ends with the wrong number of characters.",
+  },
+  "2.11-complex": {
+    title: "Debugging Triangular Patterns and Reasoning About When a Nested Loop Runs at All",
+    concept: "At this depth, you need to compare several nearly-identical nested loop implementations to determine which one exactly matches a target output, spot subtle off-by-one bugs in the inner loop's bound (such as j <= i + 1 instead of j <= i), and reason about the exact conditions two variables must satisfy for a nested loop's body to execute even a single time -- the outer loop's condition must be true for at least one value, and the inner loop's condition must also be true during that pass.",
+    examples: [
+      { text: "for (int i = 0; i < n; i++)\n{\n    for (int j = i; j < m; j++)\n    {\n        count++;\n    }\n}\ncount is guaranteed to increase at least once only if n > 0 (so the outer loop runs) AND m > 0 (so that on the first pass, when i is 0, the inner loop's condition j < m is true)." },
+    ],
+    commonMistake: "Students frequently assume that the outer loop's condition being true is enough to guarantee the inner loop executes, forgetting to check the inner loop's own condition separately.",
+  },
+  "2.12-basic": {
+    title: "Counting Executions in a Single Loop",
+    concept: "A statement execution count is simply the number of times a statement (or method call) actually runs during a loop. To find it, list or trace the values the loop variable takes and count how many there are, paying close attention to whether the loop uses < or <= and whether it counts up or down. If the statement is inside an if inside the loop, only count the passes where the condition is actually true.",
+    examples: [
+      { text: "for (int i = 1; i <= 5; i++)\n{\n    doTask();\n}\ndoTask() runs 5 times, once for each value i = 1, 2, 3, 4, 5." },
+      { text: "for (int i = 1; i <= 8; i++)\n{\n    if (i % 4 == 0)\n    {\n        count++;\n    }\n}\ncount++ runs only 2 times, when i is 4 and 8." },
+    ],
+    commonMistake: "Students often miscount the boundary value, forgetting that <= includes the final value or that < stops one short of it.",
+  },
+  "2.12-intermediate": {
+    title: "Counting Executions in Nested Loops with Fixed Bounds",
+    concept: "When a loop is nested inside another loop and the inner loop always runs the same number of times no matter what the outer loop variable is, the total number of executions is simply the outer loop's iteration count multiplied by the inner loop's iteration count. Trace each loop separately first, then multiply.",
+    examples: [
+      { text: "for (int i = 0; i < 4; i++)\n{\n    for (int j = 1; j <= 5; j++)\n    {\n        doStep();\n    }\n}\nThe outer loop runs 4 times and the inner loop always runs 5 times, so doStep() executes 4 x 5 = 20 times." },
+    ],
+    commonMistake: "Adding the outer and inner counts together (or forgetting to multiply at all) instead of correctly multiplying them.",
+  },
+  "2.12-complex": {
+    title: "Counting Executions When the Inner Bound Depends on the Outer Variable",
+    concept: "Sometimes the inner loop's bound changes based on the current value of the outer loop variable, so you cannot just multiply a single inner count by the outer count. Instead, trace the inner loop's execution count separately for each outer iteration and add all those counts together (this often produces a triangular-number pattern like 1 + 2 + 3 + ...). A related complex pattern is a loop with a non-trivial step, such as incrementing by 2 or counting down, combined with a conditional (like a modulus check) that only counts some of the loop's iterations.",
+    examples: [
+      { text: "for (int i = 1; i <= 4; i++)\n{\n    for (int j = 1; j <= i; j++)\n    {\n        mark();\n    }\n}\nThe inner loop runs 1, 2, 3, then 4 times as i goes from 1 to 4, so mark() executes 1 + 2 + 3 + 4 = 10 times total, not 4 x 4." },
+      { text: "for (int i = 1; i <= 10; i = i + 2)\n{\n    if (i % 3 == 0)\n    {\n        count++;\n    }\n}\nThe loop only visits i = 1, 3, 5, 7, 9, and among those only 3 and 9 are divisible by 3, so count++ executes 2 times." },
+    ],
+    commonMistake: "Multiplying the outer loop's count by a single 'typical' inner count instead of summing the different inner counts produced by each outer iteration.",
+  },
 };
 
 export function getReview(topic, tier) {
