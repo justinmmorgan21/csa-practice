@@ -10,6 +10,7 @@ import { UNIT3_SEGMENT_A_ITEMS } from "./unit3-segmentA";
 import { UNIT3_SEGMENT_B_ITEMS } from "./unit3-segmentB";
 import { UNIT4_SEGMENT_A_ITEMS } from "./unit4-segmentA";
 import { UNIT4_SEGMENT_B_ITEMS } from "./unit4-segmentB";
+import { UNIT4_SEGMENT_C_ITEMS } from "./unit4-segmentC";
 
 // This is the seed/fallback content -- the live, editable version now lives
 // in Firestore (see contentStore.js). This static bank is only used to
@@ -25,4 +26,5 @@ export const STATIC_ITEM_BANK = [
   ...UNIT3_SEGMENT_B_ITEMS,
   ...UNIT4_SEGMENT_A_ITEMS,
   ...UNIT4_SEGMENT_B_ITEMS,
+  ...UNIT4_SEGMENT_C_ITEMS,
 ];
