@@ -74,7 +74,7 @@ const UNITS = {
       segments: [
         { id: "u4sA", label: "Benchmark A (Topics 4.1-4.5)", topics: ["4.1", "4.2", "4.3", "4.4", "4.5"] },
         { id: "u4sB", label: "Benchmark B (Topics 4.6-4.10)", topics: ["4.6", "4.7", "4.8", "4.9", "4.10"] },
-        // Benchmark C (Topics 4.11-4.17) will be added here once generated.
+        { id: "u4sC", label: "Benchmark C (Topics 4.11-4.17)", topics: ["4.11", "4.12", "4.13", "4.14", "4.15", "4.16", "4.17"] },
       ],
     },
   ],
@@ -130,6 +130,13 @@ const TOPIC_LABELS = {
   "4.8": "ArrayList Methods",
   "4.9": "ArrayList Traversals",
   "4.10": "Implementing ArrayList Algorithms",
+  "4.11": "2D Array Creation and Access",
+  "4.12": "2D Array Traversals",
+  "4.13": "Implementing 2D Array Algorithms",
+  "4.14": "Searching Algorithms",
+  "4.15": "Sorting Algorithms",
+  "4.16": "Recursion",
+  "4.17": "Recursive Searching and Sorting",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
