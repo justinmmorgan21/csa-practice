@@ -73,7 +73,8 @@ const UNITS = {
       label: "Unit 4: Data Collections",
       segments: [
         { id: "u4sA", label: "Benchmark A (Topics 4.1-4.5)", topics: ["4.1", "4.2", "4.3", "4.4", "4.5"] },
-        // Benchmark B (Topics 4.6-4.10) and Benchmark C (Topics 4.11-4.17) will be added here once generated.
+        { id: "u4sB", label: "Benchmark B (Topics 4.6-4.10)", topics: ["4.6", "4.7", "4.8", "4.9", "4.10"] },
+        // Benchmark C (Topics 4.11-4.17) will be added here once generated.
       ],
     },
   ],
@@ -124,6 +125,11 @@ const TOPIC_LABELS = {
   "4.3": "Array Creation and Access",
   "4.4": "Array Traversals",
   "4.5": "Implementing Array Algorithms",
+  "4.6": "Using Text Files",
+  "4.7": "Wrapper Classes",
+  "4.8": "ArrayList Methods",
+  "4.9": "ArrayList Traversals",
+  "4.10": "Implementing ArrayList Algorithms",
 };
 
 const TIER_ORDER = ["basic", "intermediate", "complex"];
