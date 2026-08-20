@@ -879,6 +879,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
   const [renameName, setRenameName] = useState("");
   const [renameIdTag, setRenameIdTag] = useState("");
   const [showContentEditor, setShowContentEditor] = useState(false);
+  const [editingPinSlug, setEditingPinSlug] = useState(null);
+  const [pinDraft, setPinDraft] = useState("");
+  const [pinDraftError, setPinDraftError] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -1058,6 +1062,18 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
+  const setStudentPinManual = async (entry, newPin) => {
+    if (!/^\d{4}$/.test(newPin)) { setPinDraftError("PIN must be exactly 4 digits."); return; }
+    const slug = rosterSlug(entry);
+    const data = await loadStudentRaw(course, section, slug);
+    if (!data) return;
+    const updated = { ...data, pin: newPin };
+    await saveStudent(course, section, slug, updated);
+    setStudents((s) => ({ ...s, [slug]: updated }));
+    setEditingPinSlug(null);
+    setPinDraftError("");
+  };
+
   const moveStudent = async (entry, targetSection) => {
     if (!targetSection || targetSection === section) return;
     const slug = rosterSlug(entry);
@@ -1195,6 +1211,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
           className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export all data
         </button>
+        <button onClick={() => setShowChangePassword(true)} title="Change the teacher password"
+          className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
+          <KeyRound size={14} /> Change password
+        </button>
         <button onClick={onLock} title="Lock the Teacher tab"
           className="ml-auto px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 text-sm text-slate-500">
           <Lock size={14} /> Lock
@@ -1318,7 +1338,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => regeneratePin(entry)} title="Click to generate a new PIN"
+                    <button onClick={() => {
+                        if (editingPinSlug === slug) { setEditingPinSlug(null); return; }
+                        setEditingPinSlug(slug); setPinDraft(data.pin || ""); setPinDraftError("");
+                      }} title="Click to view or change this student's PIN"
                       className="text-xs px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1 font-mono text-slate-500">
                       <KeyRound size={12} /> {data.pin || "----"}
                     </button>
@@ -1370,6 +1393,28 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                     <button onClick={() => setRenamingSlug(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500">
                       Cancel
                     </button>
+                  </div>
+                )}
+                {editingPinSlug === slug && (
+                  <div className="border-t border-slate-100 bg-slate-50 p-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-500">Set PIN to:</span>
+                    <input value={pinDraft} autoFocus
+                      onChange={(e) => { setPinDraft(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinDraftError(""); }}
+                      onKeyDown={(e) => e.key === "Enter" && pinDraft.length === 4 && setStudentPinManual(entry, pinDraft)}
+                      placeholder="4 digits" className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-mono w-24" />
+                    <button onClick={() => setStudentPinManual(entry, pinDraft)} disabled={pinDraft.length !== 4}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      Save
+                    </button>
+                    <button onClick={async () => { await regeneratePin(entry); setEditingPinSlug(null); setPinDraftError(""); }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500 inline-flex items-center gap-1">
+                      <RotateCcw size={12} /> Randomize instead
+                    </button>
+                    <button onClick={() => { setEditingPinSlug(null); setPinDraftError(""); }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors text-slate-500">
+                      Cancel
+                    </button>
+                    {pinDraftError && <p className="text-rose-600 text-xs w-full">{pinDraftError}</p>}
                   </div>
                 )}
                 {movingSlug === slug && (
@@ -1481,8 +1526,88 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
           </div>
         </div>
       )}
+
+      {showChangePassword && (
+        <TeacherChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
       </>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Teacher password change -- lets an already-unlocked teacher set a new
+// password after re-entering the current one. Separate from TeacherGate's
+// first-time setup / unlock flow below.
+// ---------------------------------------------------------------------------
+function TeacherChangePasswordModal({ onClose }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async () => {
+    setError("");
+    if (newPw.length < 8) { setError("New password must be at least 8 characters."); return; }
+    if (newPw !== confirmPw) { setError("New passwords don't match."); return; }
+    setBusy(true);
+    const [inputHash, storedHash] = await Promise.all([hashPassword(currentPw), loadTeacherPasswordHash()]);
+    if (inputHash !== storedHash) {
+      setBusy(false);
+      setError("Current password is incorrect.");
+      return;
+    }
+    await saveTeacherPasswordHash(await hashPassword(newPw));
+    setBusy(false);
+    setSuccess(true);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl border border-slate-200 p-5 max-w-sm w-full">
+        {success ? (
+          <>
+            <p className="text-sm font-semibold text-slate-800 mb-1">Password updated</p>
+            <p className="text-xs text-slate-500 mb-4">Use your new password next time you unlock the Teacher tab.</p>
+            <button onClick={onClose}
+              className="w-full px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors">
+              Done
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-semibold text-slate-800 mb-1">Change teacher password</p>
+            <p className="text-xs text-slate-500 mb-4">Enter your current password, then choose a new one (8+ characters).</p>
+            <input type="password" value={currentPw} autoFocus
+              onChange={(e) => { setCurrentPw(e.target.value); setError(""); }}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"
+              placeholder="Current password" />
+            <input type="password" value={newPw}
+              onChange={(e) => { setNewPw(e.target.value); setError(""); }}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"
+              placeholder="New password" />
+            <input type="password" value={confirmPw}
+              onChange={(e) => { setConfirmPw(e.target.value); setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-3"
+              placeholder="Confirm new password" />
+            {error && <p className="text-rose-600 text-xs mb-3">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleSave} disabled={busy || !currentPw || !newPw || !confirmPw}
+                className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium disabled:opacity-40 hover:bg-indigo-700 transition-colors">
+                {busy ? "Saving..." : "Save"}
+              </button>
+              <button onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500">
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
