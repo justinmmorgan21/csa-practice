@@ -216,19 +216,21 @@ export const REVIEWS = {
   },
   "1.9-intermediate": {
     title: "Applying Signatures & Call by Value",
-    concept: "Arguments passed to a method must match the parameter list in number, order, and compatible type. Java uses call by value -- a parameter starts out as a COPY of whatever was passed in, so changes made to the parameter inside the method never affect the original variable back at the call site.",
+    concept: "Arguments passed to a method must match the parameter list in number, order, and compatible type. Java uses call by value -- a parameter starts out as a COPY of whatever was passed in, so changes made to the parameter inside the method never affect the original variable back at the call site. Many questions in this section (and on the actual AP exam) show a 'Method Signature | Explanation' table -- the method's implementation is NEVER shown, only its signature and a plain-English description of what it does. You then have to trace a code segment that calls those methods using ONLY the descriptions in the table.",
     examples: [
       { text: "public void updateScore(int points) { points = points + 10; }\nCalling updateScore(myScore) does NOT change myScore -- points only ever held a copy." },
+      { text: "Method Signature | Explanation\npublic void showResult(int x, int y) | Prints the value of y - x\n\nCalling showResult(2, 9) prints 7 -- you must plug the arguments into the DESCRIPTION (y - x), not guess at hidden code, since no implementation is given." },
     ],
-    commonMistake: "Passing too many, too few, or wrong-type arguments compared to a method's parameter list is a compile-time error, not something that silently \"just works.\"",
+    commonMistake: "Passing too many, too few, or wrong-type arguments compared to a method's parameter list is a compile-time error, not something that silently \"just works.\" Also, when a table only gives a description (no code), don't assume you know how the method is implemented -- trust only what the Explanation column says.",
   },
   "1.9-complex": {
     title: "Overloading & Call by Value with Objects",
-    concept: "Overloaded methods share a name but have different signatures (different parameter types and/or counts) -- a different return type ALONE is never enough to make a valid overload. For reference-type parameters (like an object), call by value copies the REFERENCE itself, not the object's data -- so changes made through that reference to the object's own attributes are still visible outside the method, even though the reference variable itself was only copied.",
+    concept: "Overloaded methods share a name but have different signatures (different parameter types and/or counts) -- a different return type ALONE is never enough to make a valid overload. For reference-type parameters (like an object), call by value copies the REFERENCE itself, not the object's data -- so changes made through that reference to the object's own attributes are still visible outside the method, even though the reference variable itself was only copied. As in the intermediate tier, expect 'Method Signature | Explanation' tables here too -- sometimes with two or three overloaded or chained methods at once, where one bad call (wrong argument count/type, or no matching overload) can keep the ENTIRE program from compiling, so nothing at all gets printed.",
     examples: [
       { text: "public int compute(int x) and public double compute(int x) -- same name, same parameters, only return type differs. This does NOT compile as a valid overload." },
+      { text: "Method Signature | Explanation\npublic void printA(int x) | Prints the value of x\npublic void printC(int x, int y) | Prints the sum of x and y\n\nIf a code segment calls printC with an int and a double (printC(m, d)), that single bad call keeps the WHOLE program from compiling -- even the earlier, perfectly valid printA(m) call never gets to run." },
     ],
-    commonMistake: "Don't assume passing an object into a method fully protects it from changes -- call by value protects the reference variable, not the object's own internal state.",
+    commonMistake: "Don't assume passing an object into a method fully protects it from changes -- call by value protects the reference variable, not the object's own internal state. Also, don't forget that a single call that doesn't match any overload's signature is a compile-time error for the WHOLE program, not just a bad answer for that one line.",
   },
 
   "2.1-basic": {
