@@ -4,6 +4,7 @@ import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { getReview } from "./reviews";
 import { loadAllContent, saveSegmentItems } from "./contentStore";
+import { STATIC_ITEM_BANK } from "./items/index";
 import {
   CheckCircle2,
   XCircle,
@@ -1629,6 +1630,7 @@ function ContentEditor({ course, itemBank, onItemBankChange }) {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState("");
+  const [confirmingRestore, setConfirmingRestore] = useState(false);
 
   useEffect(() => {
     const matches = itemBank.filter((it) => it.course === course && it.topic === edTopic && it.tier === edTier);
@@ -1714,6 +1716,14 @@ function ContentEditor({ course, itemBank, onItemBankChange }) {
     downloadJson(itemBank, `content-bank-${course}-${new Date().toISOString().slice(0, 10)}.json`);
   };
 
+  const restoreDefaults = () => {
+    const defaults = STATIC_ITEM_BANK.filter((it) => it.course === course && it.topic === edTopic && it.tier === edTier);
+    setLocalItems(defaults.map((it) => ({ ...it, choices: [...it.choices] })));
+    setDirty(true);
+    setSaveMsg("");
+    setConfirmingRestore(false);
+  };
+
   const currentSegment = getSegment(course, edUnit, edSegment);
 
   return (
@@ -1746,7 +1756,23 @@ function ContentEditor({ course, itemBank, onItemBankChange }) {
         <button onClick={() => setShowImport((v) => !v)} className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs text-slate-500">
           {showImport ? "Hide import" : "Import JSON"}
         </button>
+        <button onClick={() => setConfirmingRestore(true)} title="Replace this topic/tier's items with the bundled defaults shipped in the codebase"
+          className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs text-slate-500 inline-flex items-center gap-1">
+          <RotateCcw size={12} /> Restore bundled defaults
+        </button>
       </div>
+
+      {confirmingRestore && (
+        <div className="mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50">
+          <p className="text-xs text-amber-800 mb-2">
+            This replaces every item currently shown below (Topic {edTopic}, {TIER_LABELS[edTier]}) with the version bundled in the app's source code -- discarding any live edits made to this topic/tier in the Content Editor. Nothing is saved to Firestore until you click "Save changes" afterward.
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={restoreDefaults} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs">Yes, load bundled defaults</button>
+            <button onClick={() => setConfirmingRestore(false)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-500 hover:bg-slate-50">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {showImport && (
         <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-slate-50">
