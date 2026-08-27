@@ -979,7 +979,7 @@ function StudentView({ course, section, roster, itemBank }) {
                 <option value="">Choose a topic/tier...</option>
                 {moveOptions.map((p) => (
                   <option key={moveOptionKey(p)} value={moveOptionKey(p)}>
-                    {p.unitLabel} · {p.segmentLabel} · Topic {p.topic} ({TOPIC_LABELS[p.topic] || p.topic}) · {TIER_LABELS[p.tier]}
+                    {p.unitLabel} · Topic {p.topic} ({TOPIC_LABELS[p.topic] || p.topic}) · {TIER_LABELS[p.tier]}
                   </option>
                 ))}
               </select>
