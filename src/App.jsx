@@ -272,6 +272,15 @@ function allPositions(course) {
   return out;
 }
 
+// Does a {unitId, segmentId, topic} position actually belong to the given
+// course's curriculum? Used to tell whether a stored position is stale for
+// whichever curriculum is currently active -- e.g. a CS3 student's saved
+// position might belong to their "AP CS A review" bookmark rather than
+// CS3's own (currently empty) content, or vice versa.
+function positionBelongsTo(course, data) {
+  return !!(data && data.topic && getSegment(course, data.unitId, data.segmentId)?.topics.includes(data.topic));
+}
+
 // Extracts a sortable last initial from a name like "Jane A." -> "A".
 // Falls back gracefully for names that don't follow that convention.
 function lastInitial(name) {
@@ -484,7 +493,7 @@ function CourseSectionBar({ course, section, onCourse, onSection, studentCount }
 // ---------------------------------------------------------------------------
 // Student practice view
 // ---------------------------------------------------------------------------
-function StudentView({ course, section, roster, itemBank }) {
+function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const [selectedName, setSelectedName] = useState("");
   const [studentData, setStudentData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -523,10 +532,14 @@ function StudentView({ course, section, roster, itemBank }) {
     // (hasn't been deleted via the Content Editor since).
     if (data.inProgressRound) {
       const ip = data.inProgressRound;
+      // A CS3 student's in-progress round could belong to their "AP CS A
+      // review" mode (drawing from reviewItemBank) rather than their native
+      // course's own bank -- check the bank that was actually active.
+      const activeBank = (course === "cs3" && data.reviewMode === "csa") ? reviewItemBank : itemBank;
       const stillValid = ip.topic === data.topic && ip.tier === data.tier &&
-        ip.itemIds.every((id) => itemBank.some((it) => it.id === id));
+        ip.itemIds.every((id) => activeBank.some((it) => it.id === id));
       if (stillValid) {
-        const items = ip.itemIds.map((id) => itemBank.find((it) => it.id === id));
+        const items = ip.itemIds.map((id) => activeBank.find((it) => it.id === id));
         setRound({ items, index: ip.answers.length, answers: ip.answers });
       } else {
         data = { ...data, inProgressRound: null };
@@ -536,7 +549,7 @@ function StudentView({ course, section, roster, itemBank }) {
 
     setStudentData(data);
     setLoading(false);
-  }, [course, section, itemBank]);
+  }, [course, section, itemBank, reviewItemBank]);
 
   const submitPin = () => {
     if (pinInput === studentData.pin) {
@@ -554,6 +567,36 @@ function StudentView({ course, section, roster, itemBank }) {
     setShowMoveModal(false); setMoveDirection("back"); setMoveChoice("");
   };
 
+  // CS3 has no content of its own yet -- for now it's used as an AP CS A
+  // review tool instead. A CS3 student picks a mode (once, at first login;
+  // switchable later via the header) and everything content-related
+  // (curriculum, item bank, navigation) follows that choice instead of their
+  // native "cs3" course, while their roster identity/PIN/storage stay under
+  // course="cs3" the whole time -- see effectiveCourse/effectiveItemBank below.
+  const chooseReviewMode = async (mode) => {
+    let updated = { ...studentData, reviewMode: mode };
+    if (mode === "csa" && !positionBelongsTo("csa", studentData)) {
+      // First time choosing review mode (or their old review position no
+      // longer resolves) -- start at the very beginning, but immediately
+      // open every topic/tier up for free navigation via the Move picker,
+      // since this is a review tool, not a gated first-time course.
+      const firstUnit = UNITS.csa[0];
+      const firstSegment = firstUnit.segments[0];
+      const firstTopic = firstSegment.topics[0];
+      const last = allPositions("csa")[allPositions("csa").length - 1];
+      updated = {
+        ...updated,
+        unitId: firstUnit.id, segmentId: firstSegment.id, topic: firstTopic, tier: TIER_ORDER[0],
+        farthest: last, locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: null, inProgressRound: null,
+      };
+    }
+    setStudentData(updated);
+    setRound(null);
+    setRoundResult(null);
+    setShowReview(false);
+    await saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
+  };
+
   // Self-service navigation: a student can move BACK to any earlier topic/tier
   // they want (no restriction -- they just continue forward normally from
   // there, unlike a teacher's optional "one pass then jump right back" detour).
@@ -564,7 +607,7 @@ function StudentView({ course, section, roster, itemBank }) {
       ...studentData, unitId: newPos.unitId, segmentId: newPos.segmentId, topic: newPos.topic, tier: newPos.tier,
       locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: null, inProgressRound: null,
     };
-    updated.farthest = laterPosition(course, getFarthest(studentData), newPos);
+    updated.farthest = laterPosition(effectiveCourse, getFarthest(studentData), newPos);
     setStudentData(updated);
     setRound(null);
     setRoundResult(null);
@@ -575,7 +618,7 @@ function StudentView({ course, section, roster, itemBank }) {
   };
 
   const startRound = () => {
-    const pool = itemsForTopicTier(itemBank, course, studentData.topic, studentData.tier);
+    const pool = itemsForTopicTier(effectiveItemBank, effectiveCourse, studentData.topic, studentData.tier);
     const items = sample(pool, Math.min(ROUND_SIZE, pool.length));
     setRound({ items, index: 0, answers: [] });
     setSelectedChoice(null);
@@ -631,7 +674,7 @@ function StudentView({ course, section, roster, itemBank }) {
           updated.tier = TIER_ORDER[tierIdx + 1];
         } else {
           updated.masteredTopics = [...new Set([...updated.masteredTopics, studentData.topic])];
-          const next = resolveNextTopic(course, studentData.unitId, studentData.segmentId, studentData.topic);
+          const next = resolveNextTopic(effectiveCourse, studentData.unitId, studentData.segmentId, studentData.topic);
           if (next) {
             // Advance immediately -- the round-result screen below just
             // reports the move, rather than requiring a second click.
@@ -657,7 +700,7 @@ function StudentView({ course, section, roster, itemBank }) {
     // self-service "move forward" picker below knows how far it's allowed to
     // let them jump back to after they've used "move back" to review earlier
     // material. This only ever ratchets forward.
-    updated.farthest = laterPosition(course, getFarthest(studentData),
+    updated.farthest = laterPosition(effectiveCourse, getFarthest(studentData),
       { unitId: updated.unitId, segmentId: updated.segmentId, topic: updated.topic, tier: updated.tier });
 
     setStudentData(updated);
@@ -732,30 +775,74 @@ function StudentView({ course, section, roster, itemBank }) {
     );
   }
 
-  if (!studentData.topic && !studentData.locked) {
+  // CS3 has no content of its own yet -- until it does, a CS3 student picks
+  // between reviewing the AP CS A bank or their (currently empty) native
+  // course. Every other course is unaffected by any of this.
+  if (course === "cs3" && !studentData.reviewMode) {
     return (
-      <div className="max-w-lg mx-auto mt-10 p-6 rounded-xl bg-white border border-slate-200 text-center">
-        <p className="text-slate-500 text-sm">Your teacher hasn't added any practice content for {COURSES[course].label} yet.</p>
+      <div className="max-w-sm mx-auto mt-10 p-6 rounded-xl bg-white border border-slate-200 text-center">
+        <p className="text-slate-500 text-sm mb-1">Hi, {studentData.displayName}</p>
+        <p className="font-mono text-xs text-slate-400 mb-5">What would you like to work on?</p>
+        <div className="flex flex-col gap-2">
+          <button onClick={() => chooseReviewMode("csa")}
+            className="px-4 py-3 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors text-indigo-800 font-medium">
+            AP CS A review
+          </button>
+          <button onClick={() => chooseReviewMode("cs3")}
+            className="px-4 py-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700 font-medium">
+            {COURSES.cs3.label}
+          </button>
+        </div>
+        <button onClick={switchStudent} className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-mono">
+          not {studentData.displayName}?
+        </button>
       </div>
     );
   }
 
-  const unit = getUnit(course, studentData.unitId);
-  const segment = getSegment(course, studentData.unitId, studentData.segmentId);
+  // Whichever curriculum is actually active for this student right now.
+  // Normally that's just their own course -- except a CS3 student who has
+  // chosen "AP CS A review", who gets AP CS A's whole curriculum and item
+  // bank layered on top, while their roster identity/PIN/storage stay under
+  // course="cs3" throughout (see the save calls above and below, which all
+  // still use the real `course`/`section` props, never `effectiveCourse`).
+  const isReviewing = course === "cs3" && studentData.reviewMode === "csa";
+  const effectiveCourse = isReviewing ? "csa" : course;
+  const effectiveItemBank = isReviewing ? reviewItemBank : itemBank;
+
+  if ((!studentData.topic || !positionBelongsTo(effectiveCourse, studentData)) && !studentData.locked) {
+    return (
+      <div className="max-w-lg mx-auto mt-10 p-6 rounded-xl bg-white border border-slate-200 text-center">
+        <p className="text-slate-500 text-sm">Your teacher hasn't added any practice content for {COURSES[effectiveCourse].label} yet.</p>
+        {course === "cs3" && (
+          <button onClick={() => chooseReviewMode(isReviewing ? "cs3" : "csa")}
+            className="mt-4 text-xs text-indigo-600 hover:text-indigo-800 font-mono">
+            {isReviewing ? `Switch to ${COURSES.cs3.label}` : "Switch to AP CS A review"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const unit = getUnit(effectiveCourse, studentData.unitId);
+  const segment = getSegment(effectiveCourse, studentData.unitId, studentData.segmentId);
   const isFlagged = studentData.flagged;
   const isLocked = studentData.locked;
-  const liveNext = isLocked ? resolveNextSegmentOrUnit(course, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
+  const liveNext = isLocked ? resolveNextSegmentOrUnit(effectiveCourse, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
   const review = getReview(studentData.topic, studentData.tier);
 
   // Options for the self-service move picker. "Back" is unrestricted (any
   // earlier position); "forward" is capped at the farthest this student has
   // actually earned by passing rounds, so it can never be used to skip ahead.
+  // For a CS3 student in review mode, "farthest" was set to AP CS A's very
+  // last topic/tier the moment they chose review mode, so forward is
+  // effectively wide open too -- see chooseReviewMode above.
   const currentPos = { unitId: studentData.unitId, segmentId: studentData.segmentId, topic: studentData.topic, tier: studentData.tier };
-  const currentTuple = positionTuple(course, currentPos);
-  const farthestTuple = positionTuple(course, getFarthest(studentData));
-  const backOptions = allPositions(course).filter((p) => compareTuples(positionTuple(course, p), currentTuple) < 0);
-  const forwardOptions = allPositions(course).filter((p) => {
-    const t = positionTuple(course, p);
+  const currentTuple = positionTuple(effectiveCourse, currentPos);
+  const farthestTuple = positionTuple(effectiveCourse, getFarthest(studentData));
+  const backOptions = allPositions(effectiveCourse).filter((p) => compareTuples(positionTuple(effectiveCourse, p), currentTuple) < 0);
+  const forwardOptions = allPositions(effectiveCourse).filter((p) => {
+    const t = positionTuple(effectiveCourse, p);
     return compareTuples(t, currentTuple) > 0 && compareTuples(t, farthestTuple) <= 0;
   });
   const moveOptions = moveDirection === "back" ? backOptions : forwardOptions;
@@ -774,10 +861,20 @@ function StudentView({ course, section, roster, itemBank }) {
     <div className="max-w-lg mx-auto mt-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-xs text-slate-400 font-mono">{unit ? unit.label : ""}{segment ? ` \u00b7 ${segment.label}` : ""}</p>
+          <p className="text-xs text-slate-400 font-mono">
+            {isReviewing && <span className="px-1.5 py-0.5 mr-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] align-middle">AP CS A review</span>}
+            {unit ? unit.label : ""}{segment ? ` \u00b7 ${segment.label}` : ""}
+          </p>
           <h2 className="text-xl font-semibold text-slate-800">{studentData.displayName}</h2>
         </div>
         <div className="flex items-center gap-2">
+          {course === "cs3" && (
+            <button onClick={() => chooseReviewMode(isReviewing ? "cs3" : "csa")}
+              title={isReviewing ? `Switch to ${COURSES.cs3.label}` : "Switch to AP CS A review"}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-xs text-slate-500 font-medium">
+              {isReviewing ? "Switch to CS3" : "Switch to review"}
+            </button>
+          )}
           <button onClick={() => { setShowMoveModal(true); setMoveDirection("back"); setMoveChoice(""); }} title="Move to a different topic/tier"
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
             <Target size={13} /> Move
@@ -790,7 +887,7 @@ function StudentView({ course, section, roster, itemBank }) {
       </div>
 
       <div className="mb-6 p-4 bg-white rounded-xl border border-slate-200">
-        <TopicRow course={course} unitId={studentData.unitId} segmentId={studentData.segmentId} currentTopic={displayTopic} masteredTopics={studentData.masteredTopics} />
+        <TopicRow course={effectiveCourse} unitId={studentData.unitId} segmentId={studentData.segmentId} currentTopic={displayTopic} masteredTopics={studentData.masteredTopics} />
         <TierTrack tier={displayTier} flagged={isFlagged} />
       </div>
 
@@ -2075,6 +2172,11 @@ export default function App() {
   const [rosterLoaded, setRosterLoaded] = useState(false);
   const [itemBank, setItemBank] = useState([]);
   const [itemBankLoaded, setItemBankLoaded] = useState(false);
+  // CS3 has no content of its own yet, so CS3 students can use AP CS A's
+  // bank as a review tool (see StudentView). When course is already "csa"
+  // this just mirrors itemBank/itemBankLoaded -- no extra fetch needed.
+  const [reviewItemBank, setReviewItemBank] = useState([]);
+  const [reviewItemBankLoaded, setReviewItemBankLoaded] = useState(false);
 
   const changeCourse = (newCourse) => {
     setCourse(newCourse);
@@ -2099,6 +2201,20 @@ export default function App() {
     });
   }, [course]);
 
+  useEffect(() => {
+    if (course === "csa") {
+      // Already loading via the effect above -- no separate fetch needed.
+      setReviewItemBank(itemBank);
+      setReviewItemBankLoaded(itemBankLoaded);
+      return;
+    }
+    setReviewItemBankLoaded(false);
+    loadAllContent(UNITS.csa, "csa").then((bank) => {
+      setReviewItemBank(bank);
+      setReviewItemBankLoaded(true);
+    });
+  }, [course, itemBank, itemBankLoaded]);
+
   return (
     <div className="min-h-screen bg-slate-50" style={{ backgroundImage: "radial-gradient(circle, #e2e8f0 1px, transparent 1px)", backgroundSize: "18px 18px" }}>
       <div className="max-w-5xl mx-auto px-4 pt-6 pb-16">
@@ -2121,10 +2237,10 @@ export default function App() {
           <CourseSectionBar course={course} section={section} onCourse={changeCourse} onSection={setSection} studentCount={mode === "teacher" ? roster.length : undefined} />
         </div>
 
-        {!rosterLoaded || !itemBankLoaded ? (
+        {!rosterLoaded || !itemBankLoaded || (course === "cs3" && !reviewItemBankLoaded) ? (
           <div className="flex items-center justify-center mt-16 text-slate-400"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>
         ) : mode === "student" ? (
-          <StudentView course={course} section={section} roster={roster} itemBank={itemBank} />
+          <StudentView course={course} section={section} roster={roster} itemBank={itemBank} reviewItemBank={reviewItemBank} />
         ) : !teacherAuthed ? (
           <TeacherGate onUnlock={() => setTeacherAuthed(true)} />
         ) : (
