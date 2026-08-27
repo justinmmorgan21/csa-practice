@@ -233,6 +233,45 @@ function compareTuples(a, b) {
   return 0;
 }
 
+// Whichever of two {unitId, segmentId, topic, tier} positions is further
+// along, per positionTuple's ordering. Used to maintain a "farthest reached"
+// high-water mark that only ever moves forward, regardless of how a
+// student's actual current position gets set (advancing through a round,
+// a teacher's manual placement, a segment unlock, or the student's own
+// self-service move-back/move-forward).
+function laterPosition(course, a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return compareTuples(positionTuple(course, a), positionTuple(course, b)) >= 0 ? a : b;
+}
+
+// A student record's high-water mark, falling back to their current position
+// for any record saved before the "farthest reached" field existed -- for
+// those, the farthest they've ever reached IS simply wherever they currently
+// are, since the move-back/move-forward feature didn't exist yet to let that
+// drift apart from their live position.
+function getFarthest(data) {
+  return data.farthest || { unitId: data.unitId, segmentId: data.segmentId, topic: data.topic, tier: data.tier };
+}
+
+// Every real, selectable practice position across a course's whole
+// curriculum (excluding the synthetic "mastered" stage, which isn't
+// something a student practices at), in curriculum order. Used to build the
+// student self-service "move back" / "move forward" pickers.
+function allPositions(course) {
+  const out = [];
+  for (const unit of UNITS[course] || []) {
+    for (const seg of unit.segments) {
+      for (const topic of seg.topics) {
+        for (const tier of TIER_ORDER) {
+          out.push({ unitId: unit.id, segmentId: seg.id, topic, tier, unitLabel: unit.label, segmentLabel: seg.label });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 // Extracts a sortable last initial from a name like "Jane A." -> "A".
 // Falls back gracefully for names that don't follow that convention.
 function lastInitial(name) {
@@ -459,6 +498,9 @@ function StudentView({ course, section, roster, itemBank }) {
   const [checkingFlag, setCheckingFlag] = useState(false);
   const [stillFlagged, setStillFlagged] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveDirection, setMoveDirection] = useState("back"); // "back" or "forward"
+  const [moveChoice, setMoveChoice] = useState("");
 
   useEffect(() => { setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
 
@@ -509,6 +551,27 @@ function StudentView({ course, section, roster, itemBank }) {
   const switchStudent = () => {
     setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
     setCheckingFlag(false); setStillFlagged(false); setShowReview(false);
+    setShowMoveModal(false); setMoveDirection("back"); setMoveChoice("");
+  };
+
+  // Self-service navigation: a student can move BACK to any earlier topic/tier
+  // they want (no restriction -- they just continue forward normally from
+  // there, unlike a teacher's optional "one pass then jump right back" detour).
+  // They can move FORWARD only up to the farthest they've actually earned by
+  // passing rounds, so this can never be used to skip ahead of real progress.
+  const applyStudentMove = async (newPos) => {
+    const updated = {
+      ...studentData, unitId: newPos.unitId, segmentId: newPos.segmentId, topic: newPos.topic, tier: newPos.tier,
+      locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: null, inProgressRound: null,
+    };
+    updated.farthest = laterPosition(course, getFarthest(studentData), newPos);
+    setStudentData(updated);
+    setRound(null);
+    setRoundResult(null);
+    setShowReview(false);
+    await saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
+    setShowMoveModal(false);
+    setMoveChoice("");
   };
 
   const startRound = () => {
@@ -589,6 +652,13 @@ function StudentView({ course, section, roster, itemBank }) {
       updated.misses = (studentData.misses || 0) + 1;
       if (updated.misses >= 2) updated.flagged = true;
     }
+
+    // Track the farthest this student has ever legitimately reached, so the
+    // self-service "move forward" picker below knows how far it's allowed to
+    // let them jump back to after they've used "move back" to review earlier
+    // material. This only ever ratchets forward.
+    updated.farthest = laterPosition(course, getFarthest(studentData),
+      { unitId: updated.unitId, segmentId: updated.segmentId, topic: updated.topic, tier: updated.tier });
 
     setStudentData(updated);
     await saveStudent(course, section, rosterSlug({ name: updated.displayName, idTag: updated.idTag }), updated);
@@ -677,6 +747,21 @@ function StudentView({ course, section, roster, itemBank }) {
   const liveNext = isLocked ? resolveNextSegmentOrUnit(course, studentData.lockedAt.unitId, studentData.lockedAt.segmentId) : null;
   const review = getReview(studentData.topic, studentData.tier);
 
+  // Options for the self-service move picker. "Back" is unrestricted (any
+  // earlier position); "forward" is capped at the farthest this student has
+  // actually earned by passing rounds, so it can never be used to skip ahead.
+  const currentPos = { unitId: studentData.unitId, segmentId: studentData.segmentId, topic: studentData.topic, tier: studentData.tier };
+  const currentTuple = positionTuple(course, currentPos);
+  const farthestTuple = positionTuple(course, getFarthest(studentData));
+  const backOptions = allPositions(course).filter((p) => compareTuples(positionTuple(course, p), currentTuple) < 0);
+  const forwardOptions = allPositions(course).filter((p) => {
+    const t = positionTuple(course, p);
+    return compareTuples(t, currentTuple) > 0 && compareTuples(t, farthestTuple) <= 0;
+  });
+  const moveOptions = moveDirection === "back" ? backOptions : forwardOptions;
+  const moveOptionKey = (p) => `${p.unitId}|${p.segmentId}|${p.topic}|${p.tier}`;
+  const selectedMoveOption = moveOptions.find((p) => moveOptionKey(p) === moveChoice) || null;
+
   // While the "Topic mastered!" round-result is showing, keep the pipeline
   // displaying the just-finished topic (fully mastered) rather than jumping
   // ahead to the next topic's Basic tier -- that jump happens only once the
@@ -692,10 +777,16 @@ function StudentView({ course, section, roster, itemBank }) {
           <p className="text-xs text-slate-400 font-mono">{unit ? unit.label : ""}{segment ? ` \u00b7 ${segment.label}` : ""}</p>
           <h2 className="text-xl font-semibold text-slate-800">{studentData.displayName}</h2>
         </div>
-        <button onClick={switchStudent} title="Log out"
-          className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-          <LogOut size={13} /> Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setShowMoveModal(true); setMoveDirection("back"); setMoveChoice(""); }} title="Move to a different topic/tier"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+            <Target size={13} /> Move
+          </button>
+          <button onClick={switchStudent} title="Log out"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+            <LogOut size={13} /> Logout
+          </button>
+        </div>
       </div>
 
       <div className="mb-6 p-4 bg-white rounded-xl border border-slate-200">
@@ -848,6 +939,63 @@ function StudentView({ course, section, roster, itemBank }) {
               {round.index + 1 < round.items.length ? "Next question" : "See tier result"} <ChevronRight size={16} />
             </button>
           )}
+        </div>
+      )}
+
+      {showMoveModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 max-w-sm w-full">
+            <h3 className="font-semibold text-slate-800 mb-1">Move to a different topic</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              You're currently on Topic {studentData.topic} ({TIER_LABELS[studentData.tier]}).
+            </p>
+
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden mb-3 text-xs font-medium">
+              <button onClick={() => { setMoveDirection("back"); setMoveChoice(""); }}
+                className={`flex-1 py-1.5 transition-colors ${moveDirection === "back" ? "bg-indigo-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}>
+                Move back
+              </button>
+              <button onClick={() => { setMoveDirection("forward"); setMoveChoice(""); }}
+                className={`flex-1 py-1.5 border-l border-slate-200 transition-colors ${moveDirection === "forward" ? "bg-indigo-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}>
+                Move forward
+              </button>
+            </div>
+
+            {moveDirection === "back" ? (
+              <p className="text-xs text-slate-500 mb-3">
+                Go back to any earlier topic and tier to review or practice more. You'll start fresh at Question 1 and just keep going from there as normal -- there's no jump back to where you are now, so make sure that's what you want.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mb-3">
+                {forwardOptions.length === 0
+                  ? "You're already at the farthest point you've earned -- there's nowhere further to move forward to yet. Keep passing tiers to unlock more."
+                  : "Jump forward to any topic/tier you've already reached, up to the farthest you've actually earned by passing rounds. You'll start fresh at Question 1."}
+              </p>
+            )}
+
+            {moveOptions.length > 0 && (
+              <select value={moveChoice} onChange={(e) => setMoveChoice(e.target.value)}
+                className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-white text-xs font-mono mb-4">
+                <option value="">Choose a topic/tier...</option>
+                {moveOptions.map((p) => (
+                  <option key={moveOptionKey(p)} value={moveOptionKey(p)}>
+                    {p.unitLabel} · {p.segmentLabel} · Topic {p.topic} ({TOPIC_LABELS[p.topic] || p.topic}) · {TIER_LABELS[p.tier]}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button onClick={() => applyStudentMove(selectedMoveOption)} disabled={!selectedMoveOption}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors">
+                {moveDirection === "back" ? "Move back" : "Move forward"}
+              </button>
+              <button onClick={() => { setShowMoveModal(false); setMoveChoice(""); }}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1026,6 +1174,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
     if (!next) return; // nothing to unlock into yet
     const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
+    // Unlocking into a new segment is real, earned progress -- keep the
+    // student's own "farthest reached" bookmark (used by their self-service
+    // move-forward picker) in sync with it.
+    updated.farthest = laterPosition(course, getFarthest(data), { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0] });
     await saveStudent(course, section, slug, updated);
     setStudents((s) => ({ ...s, [slug]: updated }));
   };
@@ -1039,6 +1191,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
       const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
       if (!next) { skipped++; continue; }
       const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
+      updated.farthest = laterPosition(course, getFarthest(data), { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0] });
       await saveStudent(course, section, slug, updated);
       setStudents((s) => ({ ...s, [slug]: updated }));
       unlocked++;
@@ -1167,6 +1320,12 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     const data = students[slug];
     if (!data) return;
     const updated = { ...data, ...newPos, locked: false, lockedAt: null, flagged: false, misses: 0, resumePoint: resumePoint || null, inProgressRound: null };
+    // A teacher placing a student ahead of where they've been before is real,
+    // earned progress -- keep their "farthest reached" bookmark in sync so
+    // their own self-service move-forward picker isn't stuck behind it. A
+    // backward placement (with or without a "jump right back" detour) leaves
+    // the bookmark untouched, same as everywhere else.
+    updated.farthest = laterPosition(course, getFarthest(data), newPos);
     await saveStudent(course, section, slug, updated);
     setStudents((s) => ({ ...s, [slug]: updated }));
     setSettingSlug(null);
