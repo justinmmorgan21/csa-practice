@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Enables manual dark-mode toggling (adding/removing a "dark" class on
+   <html>, done from App.jsx) instead of only following the OS-level
+   prefers-color-scheme setting. Tailwind v4's dark: variant is
+   media-query-only by default, so without this line a manual toggle could
+   only ever force light mode, never force dark mode, on a light-OS device. */
+@custom-variant dark (&:where(.dark, .dark *));
