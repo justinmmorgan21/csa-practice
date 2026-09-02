@@ -6,3 +6,27 @@
    media-query-only by default, so without this line a manual toggle could
    only ever force light mode, never force dark mode, on a light-OS device. */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* A number of plain <input>/<select>/<textarea> elements in this app never
+   needed their own text-color class -- they simply inherited the browser's
+   default text color, which happens to be a near-black that reads fine on
+   the light background they were always shown on. In dark mode, that same
+   inherited near-black became very low-contrast against the new dark
+   backgrounds (report: student names in the roster list, the Unit/Section
+   dropdowns, the "History" button, and the Content Editor's dropdowns and
+   question/answer fields). Rather than hunting down every individual
+   element that happens to be missing a text-color class -- including ones
+   that might get added later -- set a themed default at the root that
+   everything inherits unless it already has its own explicit color class
+   (which always wins, since it's more specific). `color-scheme` additionally
+   tells the browser to render native widgets themselves (a <select>'s
+   dropdown popup, checkboxes, the text cursor, scrollbars) using
+   dark-appropriate colors instead of the OS's light-mode defaults. */
+html {
+  color: #1e293b; /* slate-800 -- matches this app's existing light-mode body text */
+  color-scheme: light;
+}
+html.dark {
+  color: #f1f5f9; /* slate-100 -- matches this app's existing dark-mode body text */
+  color-scheme: dark;
+}
