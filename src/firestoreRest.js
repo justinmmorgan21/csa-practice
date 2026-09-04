@@ -6,12 +6,21 @@
 // GitHub Pages), so it's a single implementation for every target, not an
 // Apps-Script-only workaround.
 //
-// Our Firestore security rules are "allow read, write: if true" for every
-// collection this app uses, so these calls are unauthenticated, matching
-// how the app already behaves.
+// Every call now carries the signed-in client's Firebase Auth ID token
+// (see authClient.js), and firestore.rules checks the custom claims on that
+// token (role: "teacher", or role: "student" + studentDocId) before
+// allowing anything. Requests with no valid claim for the document being
+// touched are rejected by Firestore itself, regardless of what this client
+// code asks for.
 import { PROJECT_ID } from "./firebase";
+import { getIdToken } from "./authClient";
 
 const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+
+async function authHeader() {
+  const idToken = await getIdToken();
+  return { Authorization: `Bearer ${idToken}` };
+}
 
 // --- Convert plain JS values <-> Firestore's REST "Value" wire format ---
 function toFirestoreValue(value) {
@@ -64,7 +73,9 @@ function fieldsToObj(fields) {
 // --- Public API, matching the shape of the SDK calls we used before ---
 export async function restGetDoc(collection, id) {
   try {
-    const res = await fetch(`${BASE}/${collection}/${encodeURIComponent(id)}`);
+    const res = await fetch(`${BASE}/${collection}/${encodeURIComponent(id)}`, {
+      headers: await authHeader(),
+    });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Firestore GET failed: ${res.status}`);
     const data = await res.json();
@@ -81,7 +92,7 @@ export async function restSetDoc(collection, id, obj) {
   try {
     const res = await fetch(`${BASE}/${collection}/${encodeURIComponent(id)}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeader()) },
       body: JSON.stringify({ fields: objToFields(obj) }),
     });
     if (!res.ok) throw new Error(`Firestore PATCH failed: ${res.status}`);
@@ -92,7 +103,10 @@ export async function restSetDoc(collection, id, obj) {
 
 export async function restDeleteDoc(collection, id) {
   try {
-    await fetch(`${BASE}/${collection}/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await fetch(`${BASE}/${collection}/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: await authHeader(),
+    });
   } catch (e) {
     console.error(`restDeleteDoc(${collection}/${id}) failed`, e);
   }
