@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent } from "./storage";
-import { hashPassword, loadTeacherPasswordHash, saveTeacherPasswordHash } from "./auth";
+import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent, verifyStudentPin } from "./storage";
+import { checkTeacherPasswordExists, setInitialTeacherPassword, verifyTeacherPassword, changeTeacherPassword } from "./auth";
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { getReview } from "./reviews";
 import { loadAllContent, saveSegmentItems } from "./contentStore";
@@ -497,6 +497,7 @@ function CourseSectionBar({ course, section, onCourse, onSection, studentCount }
 // ---------------------------------------------------------------------------
 function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const [selectedName, setSelectedName] = useState("");
+  const [selectedEntry, setSelectedEntry] = useState(null);
   const [studentData, setStudentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -513,26 +514,37 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const [moveDirection, setMoveDirection] = useState("back"); // "back" or "forward"
   const [moveChoice, setMoveChoice] = useState("");
 
-  useEffect(() => { setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
+  useEffect(() => { setSelectedName(""); setSelectedEntry(null); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false); setRound(null); setRoundResult(null); }, [course, section]);
 
-  const selectStudent = useCallback(async (entry) => {
+  // Just records which name was picked and shows the PIN screen -- no
+  // student data is fetched here anymore. The old version fetched the full
+  // record (real PIN included) at this point, before the PIN was even
+  // checked, which meant the actual PIN was already sitting in the
+  // browser's memory/network traffic before any comparison happened. The
+  // record now isn't loaded until after submitPin's server-side check
+  // succeeds, below.
+  const selectStudent = useCallback((entry) => {
     setSelectedName(entry.name);
-    setLoading(true);
+    setSelectedEntry(entry);
     setUnlocked(false);
     setPinInput("");
     setPinError(false);
     setRound(null);
     setRoundResult(null);
+  }, []);
+
+  // Loads a freshly-unlocked student's record and resumes an interrupted
+  // round if one exists and still looks valid -- matches the student's
+  // current topic/tier (hasn't been manually moved since), and every
+  // sampled question still exists in the item bank (hasn't been deleted via
+  // the Content Editor since). This logic used to run as part of
+  // selectStudent, before the PIN was checked; it now only runs after a
+  // successful server-side PIN check (see submitPin), since that's the
+  // first point Firestore's rules actually allow this record to be read.
+  const loadUnlockedStudent = useCallback(async (entry) => {
     const slug = rosterSlug(entry);
     let data = await loadStudentRaw(course, section, slug);
-    if (!data) { data = emptyStudent(entry.name, course, entry.idTag); await saveStudent(course, section, slug, data); }
-    else if (!data.pin) { data = ensurePin(data); await saveStudent(course, section, slug, data); }
-
-    // Resume an interrupted round, if one exists and still looks valid --
-    // matches the student's current topic/tier (hasn't been manually moved
-    // since), and every sampled question still exists in the item bank
-    // (hasn't been deleted via the Content Editor since).
-    if (data.inProgressRound) {
+    if (data && data.inProgressRound) {
       const ip = data.inProgressRound;
       // A CS3 student's in-progress round could belong to their "AP CS A
       // review" mode (drawing from reviewItemBank) rather than their native
@@ -548,23 +560,27 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
         await saveStudent(course, section, slug, data);
       }
     }
-
     setStudentData(data);
-    setLoading(false);
   }, [course, section, itemBank, reviewItemBank]);
 
-  const submitPin = () => {
-    if (pinInput === studentData.pin) {
+  const submitPin = async () => {
+    if (!selectedEntry) return;
+    setLoading(true);
+    setPinError(false);
+    try {
+      await verifyStudentPin(course, section, rosterSlug(selectedEntry), pinInput, selectedEntry.name, selectedEntry.idTag);
+      await loadUnlockedStudent(selectedEntry);
       setUnlocked(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
+    } catch (e) {
+      setPinError(e.message || "That PIN doesn't match. Ask Mr. Morgan if you're not sure.");
       setPinInput("");
+    } finally {
+      setLoading(false);
     }
   };
 
   const switchStudent = () => {
-    setSelectedName(""); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
+    setSelectedName(""); setSelectedEntry(null); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
     setCheckingFlag(false); setStillFlagged(false); setShowReview(false);
     setShowMoveModal(false); setMoveDirection("back"); setMoveChoice("");
   };
@@ -743,14 +759,10 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
     );
   }
 
-  if (loading || !studentData) {
-    return <div className="flex items-center justify-center mt-16 text-slate-400 dark:text-slate-500"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>;
-  }
-
   if (!unlocked) {
     return (
       <div className="max-w-sm mx-auto mt-10 p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-center">
-        <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Hi, {studentData.displayName}</p>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Hi, {selectedEntry?.name}</p>
         <p className="font-mono text-xs text-slate-400 dark:text-slate-500 mb-4">Enter your 4-digit PIN</p>
         <input
           type="password"
@@ -764,17 +776,21 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
           placeholder="----"
         />
         <div>
-          <button onClick={submitPin} disabled={pinInput.length !== 4}
+          <button onClick={submitPin} disabled={pinInput.length !== 4 || loading}
             className="px-5 py-2 rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white font-medium disabled:opacity-40 hover:bg-indigo-700 dark:hover:bg-indigo-400 transition-colors">
-            Unlock
+            {loading ? "Checking..." : "Unlock"}
           </button>
         </div>
-        {pinError && <p className="text-rose-600 dark:text-rose-400 text-xs mt-3">That PIN doesn't match. Ask Mr. Morgan if you're not sure.</p>}
+        {pinError && <p className="text-rose-600 dark:text-rose-400 text-xs mt-3">{typeof pinError === "string" ? pinError : "That PIN doesn't match. Ask Mr. Morgan if you're not sure."}</p>}
         <button onClick={switchStudent} className="mt-4 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-mono">
-          not {studentData.displayName}?
+          not {selectedEntry?.name}?
         </button>
       </div>
     );
+  }
+
+  if (loading || !studentData) {
+    return <div className="flex items-center justify-center mt-16 text-slate-400 dark:text-slate-500"><Loader2 className="animate-spin mr-2" size={18} /> Loading...</div>;
   }
 
   // CS3 has no content of its own yet -- until it does, a CS3 student picks
@@ -1813,15 +1829,14 @@ function TeacherChangePasswordModal({ onClose }) {
     if (newPw.length < 8) { setError("New password must be at least 8 characters."); return; }
     if (newPw !== confirmPw) { setError("New passwords don't match."); return; }
     setBusy(true);
-    const [inputHash, storedHash] = await Promise.all([hashPassword(currentPw), loadTeacherPasswordHash()]);
-    if (inputHash !== storedHash) {
+    try {
+      await changeTeacherPassword(currentPw, newPw);
+      setSuccess(true);
+    } catch (e) {
+      setError(e.message || "Current password is incorrect.");
+    } finally {
       setBusy(false);
-      setError("Current password is incorrect.");
-      return;
     }
-    await saveTeacherPasswordHash(await hashPassword(newPw));
-    setBusy(false);
-    setSuccess(true);
   };
 
   return (
@@ -2098,24 +2113,35 @@ function TeacherGate({ onUnlock }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    loadTeacherPasswordHash().then((hash) => { setHasPassword(!!hash); setLoading(false); });
+    checkTeacherPasswordExists().then((exists) => { setHasPassword(exists); setLoading(false); });
   }, []);
 
   const handleSetup = async () => {
     if (pw.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (pw !== confirmPw) { setError("Passwords don't match."); return; }
     setBusy(true);
-    await saveTeacherPasswordHash(await hashPassword(pw));
-    setBusy(false);
-    onUnlock();
+    try {
+      await setInitialTeacherPassword(pw);
+      onUnlock();
+    } catch (e) {
+      setError(e.message || "Couldn't set the password -- try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleLogin = async () => {
     setBusy(true);
-    const [inputHash, storedHash] = await Promise.all([hashPassword(pw), loadTeacherPasswordHash()]);
-    setBusy(false);
-    if (inputHash === storedHash) onUnlock();
-    else { setError("Incorrect password."); setPw(""); }
+    setError("");
+    try {
+      await verifyTeacherPassword(pw);
+      onUnlock();
+    } catch (e) {
+      setError(e.message || "Incorrect password.");
+      setPw("");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (loading) {
