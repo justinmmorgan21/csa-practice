@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// -----------------------------------------------------------------------
+// These rules replace the old "allow read, write: if true" on every
+// collection, which let anyone -- browser console, curl, a script -- read
+// or write the whole database with no authentication at all: every
+// student's real PIN, the teacher's password hash, every roster, and all
+// content.
+//
+// The app now signs every client in with Firebase Anonymous Auth on load,
+// and a Cloud Function (see functions/index.js) verifies student PINs and
+// the teacher password server-side, minting a custom claim on success:
+//   - a student who entered the right PIN gets {role: "student", studentDocId}
+//   - the teacher gets {role: "teacher"}
+// These rules trust those claims instead of trusting whatever the client
+// says about itself.
+// -----------------------------------------------------------------------
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isTeacher() {
+      return isSignedIn() && request.auth.token.role == 'teacher';
+    }
+    function isOwnerOf(docId) {
+      return isSignedIn()
+        && request.auth.token.role == 'student'
+        && request.auth.token.studentDocId == docId;
+    }
+
+    match /rosters/{docId} {
+      // Names only -- no PINs live here. Readable by any signed-in client
+      // (anonymous sign-in included) since a student needs to see the name
+      // list before they've entered a PIN at all. Only the teacher can
+      // change a roster.
+      allow read: if isSignedIn();
+      allow write: if isTeacher();
+    }
+
+    match /students/{docId} {
+      // A student can only ever read/write their OWN record, and never the
+      // teacher-managed identity/lockout fields on it -- pin, displayName,
+      // idTag, and course can only change via the teacher or the Cloud
+      // Functions (which use the Admin SDK and bypass these rules
+      // entirely), and _failedAttempts/_lockedUntil are the Cloud
+      // Functions' own lockout bookkeeping.
+      allow read: if isTeacher() || isOwnerOf(docId);
+      allow create, delete: if isTeacher();
+      allow update: if isTeacher() || (
+        isOwnerOf(docId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['pin', 'displayName', 'idTag', 'course', '_failedAttempts', '_lockedUntil'])
+      );
+    }
+
+    match /settings/{docId} {
+      // The teacher password hash and its lockout bookkeeping. The client
+      // never reads or writes this directly anymore -- only the Cloud
+      // Functions do, via the Admin SDK, which isn't subject to these
+      // rules at all.
+      allow read, write: if false;
+    }
+
+    match /content/{docId} {
+      // Problem content: readable by any signed-in client, editable only
+      // by the teacher (Content Editor).
+      allow read: if isSignedIn();
+      allow write: if isTeacher();
+    }
+  }
+}
