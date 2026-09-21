@@ -285,6 +285,38 @@ function positionBelongsTo(course, data) {
   return !!(data && data.topic && getSegment(course, data.unitId, data.segmentId)?.topics.includes(data.topic));
 }
 
+// masteredTopics IDs are always from the "csa" curriculum's numbering, even
+// for a cs3 roster student (cs3 has no content of its own yet -- see the
+// reviewMode note above chooseReviewMode -- so any topic they've mastered
+// came from practicing the csa bank as review).
+const TOPIC_ORDER = UNITS.csa.flatMap((u) => u.segments.flatMap((s) => s.topics));
+const TOPIC_ORDER_INDEX = new Map(TOPIC_ORDER.map((t, i) => [t, i]));
+
+// A student can only mastery-advance topic by topic in curriculum order, so
+// in the normal case their masteredTopics collapses to a single run covering
+// everything through their last mastered topic. The one exception is a
+// teacher manually placing them ahead (see openPositionPicker/applyPosition),
+// which can leave a gap of never-attempted topics behind the jump -- so this
+// groups mastered topics into curriculum-ordered runs (by position in
+// TOPIC_ORDER, not by the order they happen to appear in the array) and
+// renders each as "first-last", e.g. "1.1-1.5, 2.5-2.7".
+function summarizeMasteredTopics(masteredTopics) {
+  const known = [...new Set(masteredTopics)]
+    .filter((t) => TOPIC_ORDER_INDEX.has(t))
+    .sort((a, b) => TOPIC_ORDER_INDEX.get(a) - TOPIC_ORDER_INDEX.get(b));
+  const runs = [];
+  for (const topic of known) {
+    const idx = TOPIC_ORDER_INDEX.get(topic);
+    const currentRun = runs[runs.length - 1];
+    if (currentRun && TOPIC_ORDER_INDEX.get(currentRun[currentRun.length - 1]) + 1 === idx) {
+      currentRun.push(topic);
+    } else {
+      runs.push([topic]);
+    }
+  }
+  return runs.map((run) => (run.length > 1 ? `${run[0]}-${run[run.length - 1]}` : run[0])).join(", ");
+}
+
 // Extracts a sortable last initial from a name like "Jane A." -> "A".
 // Falls back gracefully for names that don't follow that convention.
 function lastInitial(name) {
@@ -1695,7 +1727,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                     {(acc !== null || data.masteredTopics.length > 0) && (
                       <p className="text-xs text-slate-400 dark:text-slate-500">
                         {acc !== null ? `${acc}% overall accuracy` : ""}
-                        {data.masteredTopics.length > 0 ? `${acc !== null ? " \u00b7 " : ""}mastered: ${data.masteredTopics.join(", ")}` : ""}
+                        {data.masteredTopics.length > 0 ? `${acc !== null ? " \u00b7 " : ""}mastered: ${summarizeMasteredTopics(data.masteredTopics)}` : ""}
                       </p>
                     )}
                   </div>
@@ -1946,7 +1978,7 @@ function DeletedStudentsPanel({ roster, students, loading, itemBank, onRecover, 
                 {(acc !== null || data.masteredTopics.length > 0) && (
                   <p className="text-xs text-slate-400 dark:text-slate-500">
                     {acc !== null ? `${acc}% overall accuracy` : ""}
-                    {data.masteredTopics.length > 0 ? `${acc !== null ? " · " : ""}mastered: ${data.masteredTopics.join(", ")}` : ""}
+                    {data.masteredTopics.length > 0 ? `${acc !== null ? " · " : ""}mastered: ${summarizeMasteredTopics(data.masteredTopics)}` : ""}
                   </p>
                 )}
               </div>
