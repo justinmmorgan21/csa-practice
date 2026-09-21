@@ -135,6 +135,17 @@ exports.verifyStudentPin = onCall(async (request) => {
     await ref.set(data);
   }
 
+  // A record the teacher has moved to the trash (see the Teacher tab's
+  // "Deleted students" list) is not eligible to sign in even with a
+  // correct PIN -- the roster-driven picker already hides them, but this
+  // is what actually stops a student who still remembers their PIN (or
+  // reconstructs the course/section/slug themselves) from signing back
+  // into a deleted record. Recovering the student from the trash is what
+  // clears this.
+  if (data.deletedAt) {
+    throw new HttpsError("permission-denied", "This student's record is no longer active. Ask your teacher.");
+  }
+
   checkLockout(data);
 
   if (String(data.pin) !== String(pin)) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent, verifyStudentPin } from "./storage";
+import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent, verifyStudentPin, loadDeletedRoster, saveDeletedRoster } from "./storage";
 import { checkTeacherPasswordExists, setInitialTeacherPassword, verifyTeacherPassword, changeTeacherPassword } from "./auth";
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { getReview } from "./reviews";
@@ -30,6 +30,8 @@ import {
   Wrench,
   Sun,
   Moon,
+  Archive,
+  Undo2,
 } from "lucide-react";
 
 // ===========================================================================
@@ -1142,11 +1144,14 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
   const [renamingSlug, setRenamingSlug] = useState(null);
   const [renameName, setRenameName] = useState("");
   const [renameIdTag, setRenameIdTag] = useState("");
-  const [showContentEditor, setShowContentEditor] = useState(false);
+  const [activePanel, setActivePanel] = useState("roster"); // "roster" | "content" | "deleted"
   const [editingPinSlug, setEditingPinSlug] = useState(null);
   const [pinDraft, setPinDraft] = useState("");
   const [pinDraftError, setPinDraftError] = useState("");
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [deletedRoster, setDeletedRoster] = useState([]);
+  const [deletedStudents, setDeletedStudents] = useState({});
+  const [deletedLoading, setDeletedLoading] = useState(true);
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -1254,6 +1259,19 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
 
   useEffect(() => { refresh(); setBulkMsg(""); }, [refresh]);
 
+  const refreshDeleted = useCallback(async () => {
+    setDeletedLoading(true);
+    const names = await loadDeletedRoster(course, section);
+    const entries = await Promise.all(
+      names.map(async (entry) => [rosterSlug(entry), await loadStudentRaw(course, section, rosterSlug(entry))])
+    );
+    setDeletedRoster(names);
+    setDeletedStudents(Object.fromEntries(entries));
+    setDeletedLoading(false);
+  }, [course, section]);
+
+  useEffect(() => { refreshDeleted(); }, [refreshDeleted]);
+
   const addStudent = async () => {
     const name = newName.trim();
     if (!name) return;
@@ -1265,12 +1283,67 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     setNewName("");
   };
 
-  const removeStudent = async (entry) => {
+  // Moves a student to the trash instead of erasing them outright: their
+  // progress data stays in Firestore (just stamped with deletedAt) so a
+  // teacher can still review or recover it from "Deleted students" below.
+  // Only "Delete permanently" from that list actually erases the record.
+  const softDeleteStudent = async (entry) => {
     const slug = rosterSlug(entry);
-    const updated = roster.filter((e) => rosterSlug(e) !== slug);
-    await saveRoster(course, section, updated);
-    onRosterChange(updated);
+    const data = students[slug];
+    const updatedRoster = roster.filter((e) => rosterSlug(e) !== slug);
+    await saveRoster(course, section, updatedRoster);
+    onRosterChange(updatedRoster);
+    const deletedData = data ? { ...data, deletedAt: new Date().toISOString() } : data;
+    if (deletedData) await saveStudent(course, section, slug, deletedData);
+    const updatedDeleted = [...deletedRoster, entry];
+    await saveDeletedRoster(course, section, updatedDeleted);
+    setDeletedRoster(updatedDeleted);
+    setDeletedStudents((s) => ({ ...s, [slug]: deletedData }));
+    setStudents((s) => {
+      const copy = { ...s };
+      delete copy[slug];
+      return copy;
+    });
+  };
+
+  const recoverStudent = async (entry) => {
+    const slug = rosterSlug(entry);
+    if (roster.some((e) => rosterSlug(e) === slug)) {
+      window.alert("A student with that exact name/ID already exists on the active roster. Rename one of them first to avoid a conflict.");
+      return;
+    }
+    const data = deletedStudents[slug];
+    const restoredData = data ? { ...data, deletedAt: null } : data;
+    if (restoredData) await saveStudent(course, section, slug, restoredData);
+    const updatedDeleted = deletedRoster.filter((e) => rosterSlug(e) !== slug);
+    await saveDeletedRoster(course, section, updatedDeleted);
+    setDeletedRoster(updatedDeleted);
+    setDeletedStudents((s) => {
+      const copy = { ...s };
+      delete copy[slug];
+      return copy;
+    });
+    const updatedRoster = [...roster, entry];
+    await saveRoster(course, section, updatedRoster);
+    onRosterChange(updatedRoster);
+    if (restoredData) setStudents((s) => ({ ...s, [slug]: restoredData }));
+  };
+
+  const permanentlyDeleteStudent = async (entry) => {
+    const confirmed = window.confirm(
+      `Permanently delete ${entry.name}? This erases all of their progress and cannot be undone.`
+    );
+    if (!confirmed) return;
+    const slug = rosterSlug(entry);
+    const updatedDeleted = deletedRoster.filter((e) => rosterSlug(e) !== slug);
+    await saveDeletedRoster(course, section, updatedDeleted);
+    setDeletedRoster(updatedDeleted);
     await deleteStudent(course, section, slug);
+    setDeletedStudents((s) => {
+      const copy = { ...s };
+      delete copy[slug];
+      return copy;
+    });
   };
 
   const clearFlag = async (entry) => {
@@ -1498,14 +1571,28 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
           className="px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1 text-sm">
           <Trash2 size={14} /> Delete all students
         </button>
-        <button onClick={() => setShowContentEditor((v) => !v)}
-          className={`px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1 text-sm ${showContentEditor ? "bg-indigo-600 dark:bg-indigo-500 border-indigo-600 dark:border-indigo-500 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
-          <Wrench size={14} /> {showContentEditor ? "Back to roster" : "Content Editor"}
+        <button onClick={() => setActivePanel((v) => (v === "content" ? "roster" : "content"))}
+          className={`px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1 text-sm ${activePanel === "content" ? "bg-indigo-600 dark:bg-indigo-500 border-indigo-600 dark:border-indigo-500 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <Wrench size={14} /> {activePanel === "content" ? "Back to roster" : "Content Editor"}
+        </button>
+        <button onClick={() => setActivePanel((v) => (v === "deleted" ? "roster" : "deleted"))}
+          title="View, recover, or permanently delete removed students"
+          className={`px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1 text-sm ${activePanel === "deleted" ? "bg-indigo-600 dark:bg-indigo-500 border-indigo-600 dark:border-indigo-500 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <Archive size={14} /> {activePanel === "deleted" ? "Back to roster" : `Deleted students${deletedRoster.length ? ` (${deletedRoster.length})` : ""}`}
         </button>
       </div>
 
-      {showContentEditor ? (
+      {activePanel === "content" ? (
         <ContentEditor course={course} itemBank={itemBank} onItemBankChange={onItemBankChange} />
+      ) : activePanel === "deleted" ? (
+        <DeletedStudentsPanel
+          roster={deletedRoster}
+          students={deletedStudents}
+          loading={deletedLoading}
+          itemBank={itemBank}
+          onRecover={recoverStudent}
+          onPermanentDelete={permanentlyDeleteStudent}
+        />
       ) : (
       <>
 
@@ -1649,7 +1736,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                     <button onClick={() => resetStudent(entry)} title="Reset progress" className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-400 dark:text-slate-500">
                       <RotateCcw size={14} />
                     </button>
-                    <button onClick={() => removeStudent(entry)} title="Remove student" className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-900 transition-colors text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400">
+                    <button onClick={() => softDeleteStudent(entry)} title="Move to deleted students (recoverable)" className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-900 transition-colors text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -1807,6 +1894,100 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
       )}
       </>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The Teacher tab's trash: students moved off the active roster via the
+// per-student delete button (see softDeleteStudent above). Their progress
+// stays intact and viewable here until either recovered back onto the
+// active roster, or permanently erased.
+// ---------------------------------------------------------------------------
+function DeletedStudentsPanel({ roster, students, loading, itemBank, onRecover, onPermanentDelete }) {
+  const [expanded, setExpanded] = useState(null);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10 text-slate-400 dark:text-slate-500">
+        <Loader2 className="animate-spin mr-2" size={18} /> Loading deleted students...
+      </div>
+    );
+  }
+  if (roster.length === 0) {
+    return <p className="text-slate-400 dark:text-slate-500 text-sm text-center py-10 font-mono">No deleted students in this section.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {[...roster].sort((a, b) => lastInitial(a.name).localeCompare(lastInitial(b.name))).map((entry) => {
+        const slug = rosterSlug(entry);
+        const data = students[slug];
+        if (!data) return null;
+        const acc = accuracy(data.history);
+        const isOpen = expanded === slug;
+        return (
+          <div key={slug} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="flex items-center justify-between p-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="font-medium text-slate-800 dark:text-slate-100">{data.displayName}</span>
+                  {entry.idTag && (
+                    <span title="Last 2 digits of student ID -- for your own disambiguation only, never shown to students" className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500 font-mono">
+                      {`ID ${entry.idTag}`}
+                    </span>
+                  )}
+                  {data.deletedAt && (
+                    <span className="text-xs px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono">
+                      Deleted {new Date(data.deletedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                {(acc !== null || data.masteredTopics.length > 0) && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {acc !== null ? `${acc}% overall accuracy` : ""}
+                    {data.masteredTopics.length > 0 ? `${acc !== null ? " · " : ""}mastered: ${data.masteredTopics.join(", ")}` : ""}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => setExpanded(isOpen ? null : slug)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  {isOpen ? "Hide" : "History"}
+                </button>
+                <button onClick={() => onRecover(entry)} title="Restore to the active roster"
+                  className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-500 text-white hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-colors inline-flex items-center gap-1">
+                  <Undo2 size={12} /> Recover
+                </button>
+                <button onClick={() => onPermanentDelete(entry)} title="Permanently delete -- cannot be undone"
+                  className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+            {isOpen && (
+              <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4">
+                {data.history.length === 0 ? (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">No attempts yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {data.history.slice().reverse().map((h, i) => {
+                      const item = itemBank.find((it) => it.id === h.itemId);
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          {h.correct ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" /> : <XCircle size={14} className="text-rose-500 shrink-0" />}
+                          <span className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-slate-500 dark:text-slate-400">{h.topic}</span>
+                          <span className={`px-1.5 py-0.5 rounded border font-mono ${TIER_COLORS[h.tier]}`}>{TIER_LABELS[h.tier]}</span>
+                          <span className="text-slate-500 dark:text-slate-400 truncate">{item ? item.prompt.split("\n")[0] : h.itemId}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

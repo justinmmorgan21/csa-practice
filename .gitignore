@@ -19,6 +19,10 @@ appsscript-dist
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Machine-specific Claude Code dev-server config (e.g. points at a local
+# Node install path) -- not portable to other machines/teammates.
+.claude/launch.json
 .DS_Store
 *.suo
 *.ntvs*

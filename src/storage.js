@@ -39,3 +39,16 @@ export async function saveStudent(course, section, slug, data) {
 export async function deleteStudent(course, section, slug) {
   await restDeleteDoc("students", studentDocId(course, section, slug));
 }
+
+// The "deleted students" trash: soft-deleted roster entries live here (same
+// {name, idTag} shape as the active roster) while their student docs stay in
+// the "students" collection untouched apart from a deletedAt stamp, so a
+// recovered student keeps their PIN and progress intact.
+export async function loadDeletedRoster(course, section) {
+  const data = await restGetDoc("deletedRosters", rosterDocId(course, section));
+  return data ? data.names || [] : [];
+}
+
+export async function saveDeletedRoster(course, section, names) {
+  await restSetDoc("deletedRosters", rosterDocId(course, section), { names });
+}

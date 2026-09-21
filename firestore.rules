@@ -39,17 +39,30 @@ service cloud.firestore {
       allow write: if isTeacher();
     }
 
+    match /deletedRosters/{docId} {
+      // Names of soft-deleted students, staged for recovery or permanent
+      // deletion from the Teacher tab's trash. Unlike the active roster,
+      // students never need to see this, so it's teacher-only both ways.
+      allow read, write: if isTeacher();
+    }
+
     match /students/{docId} {
       // A student can only ever read/write their OWN record, and never the
       // teacher-managed identity/lockout fields on it -- pin, displayName,
       // idTag, and course can only change via the teacher or the Cloud
       // Functions (which use the Admin SDK and bypass these rules
       // entirely), and _failedAttempts/_lockedUntil are the Cloud
-      // Functions' own lockout bookkeeping.
-      allow read: if isTeacher() || isOwnerOf(docId);
+      // Functions' own lockout bookkeeping. A record the teacher has
+      // soft-deleted (deletedAt set) is also off-limits to its former
+      // owner, even if they were already signed in when it happened --
+      // verifyStudentPin refuses to mint a fresh claim for one of these,
+      // but this closes the same door for a session that predates the
+      // delete. Only the teacher can recover it (which clears deletedAt).
+      allow read: if isTeacher() || (isOwnerOf(docId) && resource.data.get('deletedAt', null) == null);
       allow create, delete: if isTeacher();
       allow update: if isTeacher() || (
         isOwnerOf(docId) &&
+        resource.data.get('deletedAt', null) == null &&
         !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['pin', 'displayName', 'idTag', 'course', '_failedAttempts', '_lockedUntil'])
       );
