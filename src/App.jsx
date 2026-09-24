@@ -258,6 +258,23 @@ function getFarthest(data) {
   return data.farthest || { unitId: data.unitId, segmentId: data.segmentId, topic: data.topic, tier: data.tier };
 }
 
+// Has this student EARNED an unlock -- reached the very end of a Benchmark
+// -- regardless of whether they're currently sitting live at the gate or
+// have since moved back (self-service) to review earlier material? farthest
+// only ever reaches "mastered" tier at a Benchmark's last topic (see
+// nextQuestion) and, being a high-water mark, never moves backward, so this
+// stays true across a review detour -- unlike the live locked flag, which
+// applyStudentMove clears the moment they move away from the gate. Returns
+// null if they haven't earned a gate; otherwise {gate, next}, where next is
+// the position just past the gate (or null if nothing further is configured
+// yet).
+function awaitingUnlock(course, data) {
+  const farthest = getFarthest(data);
+  if (farthest.tier !== "mastered") return null;
+  const gate = { unitId: farthest.unitId, segmentId: farthest.segmentId };
+  return { gate, next: resolveNextSegmentOrUnit(course, gate.unitId, gate.segmentId) };
+}
+
 // Every real, selectable practice position across a course's whole
 // curriculum (excluding the synthetic "mastered" stage, which isn't
 // something a student practices at), in curriculum order. Used to build the
@@ -734,12 +751,31 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
             updated.tier = TIER_ORDER[0];
             topicAdvancedTo = next.topic;
           } else {
-            // Last topic in the segment -- rest at "mastered" while locked,
-            // waiting for Mr. Morgan to unlock the next Benchmark.
-            updated.tier = "mastered";
-            updated.locked = true;
-            updated.lockedAt = { unitId: studentData.unitId, segmentId: studentData.segmentId };
-            segmentLocked = true;
+            // Last topic in the segment. Normally this means resting at
+            // "mastered" while locked, waiting for Mr. Morgan to unlock the
+            // next Benchmark -- but if this student reached this exact gate
+            // before (farthest already covers it) and Mr. Morgan already
+            // unlocked it while they were off reviewing earlier material
+            // (see the Teacher tab's farthest-based unlock), don't re-lock
+            // them behind a gate that's already been cleared -- continue
+            // straight through instead, same as an ordinary topic advance.
+            const segNext = resolveNextSegmentOrUnit(effectiveCourse, studentData.unitId, studentData.segmentId);
+            const alreadyUnlocked = segNext && compareTuples(
+              positionTuple(effectiveCourse, getFarthest(studentData)),
+              positionTuple(effectiveCourse, { ...segNext, tier: TIER_ORDER[0] })
+            ) >= 0;
+            if (segNext && alreadyUnlocked) {
+              updated.unitId = segNext.unitId;
+              updated.segmentId = segNext.segmentId;
+              updated.topic = segNext.topic;
+              updated.tier = TIER_ORDER[0];
+              topicAdvancedTo = segNext.topic;
+            } else {
+              updated.tier = "mastered";
+              updated.locked = true;
+              updated.lockedAt = { unitId: studentData.unitId, segmentId: studentData.segmentId };
+              segmentLocked = true;
+            }
           }
         }
       }
@@ -1387,17 +1423,24 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     setStudents((s) => ({ ...s, [slug]: updated }));
   };
 
+  // Unlocking is keyed off farthest (see awaitingUnlock), not the live
+  // locked flag, so a student who's moved back to review earlier material
+  // can still be unlocked ahead of time. If they're currently sitting live
+  // at this exact gate, carry their live position forward too, same as
+  // before; otherwise just clear the gate ahead of them (extend farthest)
+  // and let them arrive on their own -- normal play or their own
+  // self-service Move Forward, now that farthest reaches past it.
   const unlockStudent = async (entry) => {
     const slug = rosterSlug(entry);
     const data = await loadStudentRaw(course, section, slug);
-    if (!data || !data.locked) return;
-    const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
-    if (!next) return; // nothing to unlock into yet
-    const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
-    // Unlocking into a new segment is real, earned progress -- keep the
-    // student's own "farthest reached" bookmark (used by their self-service
-    // move-forward picker) in sync with it.
-    updated.farthest = laterPosition(course, getFarthest(data), { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0] });
+    if (!data) return;
+    const pending = awaitingUnlock(course, data);
+    if (!pending || !pending.next) return; // not waiting, or nothing to unlock into yet
+    const { gate, next } = pending;
+    const updated = { ...data, farthest: laterPosition(course, getFarthest(data), { ...next, tier: TIER_ORDER[0] }) };
+    if (data.locked && data.lockedAt && data.lockedAt.unitId === gate.unitId && data.lockedAt.segmentId === gate.segmentId) {
+      Object.assign(updated, { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null });
+    }
     await saveStudent(course, section, slug, updated);
     setStudents((s) => ({ ...s, [slug]: updated }));
   };
@@ -1407,11 +1450,14 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     for (const entry of roster) {
       const slug = rosterSlug(entry);
       const data = students[slug];
-      if (!data || !data.locked) continue;
-      const next = resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId);
-      if (!next) { skipped++; continue; }
-      const updated = { ...data, unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null };
-      updated.farthest = laterPosition(course, getFarthest(data), { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0] });
+      const pending = data && awaitingUnlock(course, data);
+      if (!pending) continue;
+      if (!pending.next) { skipped++; continue; }
+      const { gate, next } = pending;
+      const updated = { ...data, farthest: laterPosition(course, getFarthest(data), { ...next, tier: TIER_ORDER[0] }) };
+      if (data.locked && data.lockedAt && data.lockedAt.unitId === gate.unitId && data.lockedAt.segmentId === gate.segmentId) {
+        Object.assign(updated, { unitId: next.unitId, segmentId: next.segmentId, topic: next.topic, tier: TIER_ORDER[0], locked: false, lockedAt: null });
+      }
       await saveStudent(course, section, slug, updated);
       setStudents((s) => ({ ...s, [slug]: updated }));
       unlocked++;
@@ -1566,7 +1612,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     setStudents({});
   };
 
-  const anyWaiting = Object.values(students).some((d) => d && d.locked);
+  const anyWaiting = Object.values(students).some((d) => d && awaitingUnlock(course, d));
 
   return (
     <div className="max-w-5xl mx-auto mt-6">
@@ -1690,7 +1736,7 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
             const isOpen = expanded === slug;
             const unit = data.unitId ? getUnit(course, data.unitId) : null;
             const segment = data.unitId && data.segmentId ? getSegment(course, data.unitId, data.segmentId) : null;
-            const lockedNext = data.locked ? resolveNextSegmentOrUnit(course, data.lockedAt.unitId, data.lockedAt.segmentId) : null;
+            const pendingUnlock = awaitingUnlock(course, data);
             return (
               <div key={slug} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
                 <div className="flex items-center justify-between p-2">
@@ -1718,6 +1764,12 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                       ) : (
                         <span className="text-xs px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono">No content yet</span>
                       )}
+                      {!data.locked && pendingUnlock && (
+                        <span title="Reached the end of a Benchmark and can be unlocked now, even though they're currently reviewing earlier material"
+                          className="text-xs px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1">
+                          <Unlock size={10} /> Ready to unlock
+                        </span>
+                      )}
                       {data.flagged && (
                         <span className="text-xs px-2 py-0.5 rounded border border-rose-300 dark:border-rose-700 bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300 inline-flex items-center gap-1">
                           <Flag size={10} /> flagged
@@ -1744,8 +1796,8 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
                         Clear flag
                       </button>
                     )}
-                    {data.locked && (
-                      <button onClick={() => unlockStudent(entry)} disabled={!lockedNext} title={!lockedNext ? "No further content configured yet" : ""}
+                    {pendingUnlock && (
+                      <button onClick={() => unlockStudent(entry)} disabled={!pendingUnlock.next} title={!pendingUnlock.next ? "No further content configured yet" : "Unlock the next Benchmark"}
                         className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 dark:hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1">
                         <Unlock size={12} /> Unlock
                       </button>
