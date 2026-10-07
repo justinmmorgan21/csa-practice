@@ -309,6 +309,17 @@ function positionBelongsTo(course, data) {
 const TOPIC_ORDER = UNITS.csa.flatMap((u) => u.segments.flatMap((s) => s.topics));
 const TOPIC_ORDER_INDEX = new Map(TOPIC_ORDER.map((t, i) => [t, i]));
 
+// Curriculum-order index of the furthest topic a student has mastered, or -1
+// if they haven't mastered any. Used to sort the Teacher roster.
+function lastMasteredIndex(masteredTopics) {
+  let max = -1;
+  for (const t of masteredTopics || []) {
+    const idx = TOPIC_ORDER_INDEX.get(t);
+    if (idx !== undefined && idx > max) max = idx;
+  }
+  return max;
+}
+
 // A student can only mastery-advance topic by topic in curriculum order, so
 // in the normal case their masteredTopics collapses to a single run covering
 // everything through their last mastered topic. The one exception is a
@@ -1725,8 +1736,8 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
             if (!a || !b) return 0;
             const flagDiff = (a.flagged ? 0 : 1) - (b.flagged ? 0 : 1);
             if (flagDiff !== 0) return flagDiff;
-            const posCompare = compareTuples(positionTuple(course, a), positionTuple(course, b));
-            if (posCompare !== 0) return posCompare;
+            const masteredDiff = lastMasteredIndex(a.masteredTopics) - lastMasteredIndex(b.masteredTopics);
+            if (masteredDiff !== 0) return masteredDiff;
             return lastInitial(entryA.name).localeCompare(lastInitial(entryB.name));
           }).map((entry) => {
             const slug = rosterSlug(entry);
