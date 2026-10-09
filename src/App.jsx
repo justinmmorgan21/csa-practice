@@ -1231,6 +1231,11 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
   const [deletedRoster, setDeletedRoster] = useState([]);
   const [deletedStudents, setDeletedStudents] = useState({});
   const [deletedLoading, setDeletedLoading] = useState(true);
+  const [showClassMin, setShowClassMin] = useState(false);
+  const [minUnit, setMinUnit] = useState("");
+  const [minSegment, setMinSegment] = useState("");
+  const [minTopic, setMinTopic] = useState("");
+  const [minTier, setMinTier] = useState("basic");
 
   const handleExportAll = async () => {
     setExporting(true);
@@ -1625,6 +1630,51 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
 
   const anyWaiting = Object.values(students).some((d) => d && awaitingUnlock(course, d));
 
+  const openClassMin = () => {
+    if (showClassMin) { setShowClassMin(false); return; }
+    const u = UNITS[course][0];
+    setMinUnit(u?.id ?? "");
+    setMinSegment(u?.segments[0]?.id ?? "");
+    setMinTopic(u?.segments[0]?.topics[0] ?? "");
+    setMinTier("basic");
+    setShowClassMin(true);
+  };
+
+  // A class-wide floor: lifts everyone who hasn't yet reached the chosen
+  // position up to it, and leaves anyone already there or beyond alone.
+  // "Reached" is judged by farthest, not live position, so a student who's
+  // merely moved back to review earlier material isn't yanked out of it.
+  const classMinTarget = showClassMin && minUnit && minSegment && minTopic
+    ? { unitId: minUnit, segmentId: minSegment, topic: minTopic, tier: minTier } : null;
+  const classMinTargetTuple = classMinTarget ? positionTuple(course, classMinTarget) : null;
+  const classMinBehind = classMinTarget
+    ? roster.filter((entry) => {
+        const data = students[rosterSlug(entry)];
+        return data && compareTuples(positionTuple(course, getFarthest(data)), classMinTargetTuple) < 0;
+      })
+    : [];
+
+  const applyClassMinimum = async () => {
+    if (!classMinTarget || classMinBehind.length === 0) return;
+    const label = `Topic ${classMinTarget.topic} (${TIER_LABELS[classMinTarget.tier]})`;
+    if (!window.confirm(`Move ${classMinBehind.length} student${classMinBehind.length === 1 ? "" : "s"} up to ${label}? Anyone already at or past it is left alone.`)) return;
+    const moved = classMinBehind.length;
+    const alreadyThere = roster.length - moved;
+    for (const entry of classMinBehind) {
+      const slug = rosterSlug(entry);
+      const data = students[slug];
+      const updated = {
+        ...data, ...classMinTarget,
+        locked: false, lockedAt: null, resumePoint: null, inProgressRound: null,
+        farthest: laterPosition(course, getFarthest(data), classMinTarget),
+      };
+      await saveStudent(course, section, slug, updated);
+      setStudents((s) => ({ ...s, [slug]: updated }));
+    }
+    setBulkMsg(`Moved ${moved} student${moved === 1 ? "" : "s"} up to ${label}.` + (alreadyThere > 0 ? ` ${alreadyThere} already at or past it.` : ""));
+    setShowClassMin(false);
+  };
+
   return (
     <div className="max-w-5xl mx-auto mt-6">
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -1643,6 +1693,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
         <button onClick={unlockAllWaiting} disabled={!anyWaiting}
           className="px-3 py-2 rounded-lg bg-emerald-600 dark:bg-emerald-500 text-white hover:bg-emerald-700 dark:hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1 text-sm">
           <Unlock size={14} /> Unlock waiting students
+        </button>
+        <button onClick={openClassMin} disabled={roster.length === 0 || UNITS[course].length === 0} title="Move everyone behind a chosen topic up to it"
+          className={`px-3 py-2 rounded-lg border transition-colors inline-flex items-center gap-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed ${showClassMin ? "bg-indigo-600 dark:bg-indigo-500 border-indigo-600 dark:border-indigo-500 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <Target size={14} /> Set class minimum
         </button>
         <button onClick={handleExportAll} disabled={exporting}
           className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors inline-flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
@@ -1714,6 +1768,41 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {showClassMin && (
+        <div className="mb-4 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-indigo-900 dark:text-indigo-200">Move everyone up to at least:</span>
+          <select value={minUnit} onChange={(e) => {
+              const u = e.target.value;
+              const firstSeg = getUnit(course, u)?.segments[0];
+              setMinUnit(u); setMinSegment(firstSeg?.id || ""); setMinTopic(firstSeg?.topics[0] || "");
+            }} className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono">
+            {UNITS[course].map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+          </select>
+          <select value={minSegment} onChange={(e) => {
+              const s = e.target.value;
+              const seg = getUnit(course, minUnit)?.segments.find((x) => x.id === s);
+              setMinSegment(s); setMinTopic(seg?.topics[0] || "");
+            }} className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono">
+            {getUnit(course, minUnit)?.segments.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+          <select value={minTopic} onChange={(e) => setMinTopic(e.target.value)}
+            className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono">
+            {getSegment(course, minUnit, minSegment)?.topics.map((t) => <option key={t} value={t}>Topic {t}</option>)}
+          </select>
+          <select value={minTier} onChange={(e) => setMinTier(e.target.value)}
+            className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono">
+            {TIER_ORDER.map((t) => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+          </select>
+          <button onClick={applyClassMinimum} disabled={classMinBehind.length === 0}
+            className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 dark:hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            {classMinBehind.length === 0 ? "Everyone is already there" : `Move ${classMinBehind.length} student${classMinBehind.length === 1 ? "" : "s"}`}
+          </button>
+          <button onClick={() => setShowClassMin(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400">
+            Cancel
+          </button>
         </div>
       )}
 
