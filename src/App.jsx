@@ -373,6 +373,35 @@ function sample(arr, n) {
   return out;
 }
 
+// Picks a round's problems from a topic/tier pool using the student's answer
+// history: problems they've never seen come first, then ones they've seen
+// whose most recent answer was wrong, then whatever's left, least-seen first.
+// Random within each group, and a round never repeats a problem.
+function pickRoundItems(pool, history, n) {
+  const stats = new Map();
+  for (const h of history || []) {
+    const s = stats.get(h.itemId) || { count: 0, lastCorrect: true };
+    s.count++;
+    s.lastCorrect = h.correct;
+    stats.set(h.itemId, s);
+  }
+  const unseen = [], missed = [], rest = [];
+  for (const it of pool) {
+    const s = stats.get(it.id);
+    if (!s) unseen.push(it);
+    else if (!s.lastCorrect) missed.push(it);
+    else rest.push(it);
+  }
+  const out = sample(unseen, n);
+  if (out.length < n) out.push(...sample(missed, n - out.length));
+  if (out.length < n) {
+    const shuffled = sample(rest, rest.length);
+    shuffled.sort((a, b) => stats.get(a.id).count - stats.get(b.id).count);
+    out.push(...shuffled.slice(0, n - out.length));
+  }
+  return out;
+}
+
 function generatePin() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
@@ -699,7 +728,7 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
 
   const startRound = () => {
     const pool = itemsForTopicTier(effectiveItemBank, effectiveCourse, studentData.topic, studentData.tier);
-    const items = sample(pool, Math.min(ROUND_SIZE, pool.length));
+    const items = pickRoundItems(pool, studentData.history, Math.min(ROUND_SIZE, pool.length));
     setRound({ items, index: 0, answers: [] });
     setSelectedChoice(null);
     setShowFeedback(false);
