@@ -32,6 +32,8 @@ import {
   Moon,
   Archive,
   Undo2,
+  History,
+  ChevronDown,
 } from "lucide-react";
 
 // ===========================================================================
@@ -602,6 +604,7 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const [stillFlagged, setStillFlagged] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [moveDirection, setMoveDirection] = useState("back"); // "back" or "forward"
   const [moveChoice, setMoveChoice] = useState("");
 
@@ -673,7 +676,7 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const switchStudent = () => {
     setSelectedName(""); setSelectedEntry(null); setStudentData(null); setUnlocked(false); setPinInput(""); setPinError(false);
     setCheckingFlag(false); setStillFlagged(false); setShowReview(false);
-    setShowMoveModal(false); setMoveDirection("back"); setMoveChoice("");
+    setShowMoveModal(false); setShowHistory(false); setMoveDirection("back"); setMoveChoice("");
   };
 
   // CS3 has no content of its own yet -- for now it's used as an AP CS A
@@ -1003,6 +1006,10 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
               {isReviewing ? "Switch to CS3" : "Switch to review"}
             </button>
           )}
+          <button onClick={() => setShowHistory(true)} title="See the problems you've answered"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+            <History size={13} /> History
+          </button>
           <button onClick={() => { setShowMoveModal(true); setMoveDirection("back"); setMoveChoice(""); }} title="Move to a different topic/tier"
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
             <Target size={13} /> Move
@@ -1167,6 +1174,16 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
         </div>
       )}
 
+      {showHistory && (
+        <StudentHistoryModal
+          history={studentData.history}
+          itemBanks={[itemBank, reviewItemBank]}
+          currentTopic={studentData.topic}
+          currentTier={studentData.tier}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
       {showMoveModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5 max-w-sm w-full">
@@ -1230,6 +1247,122 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
 // ---------------------------------------------------------------------------
 // Teacher dashboard
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// A student's own answer history, grouped by topic + tier (most recently
+// worked group first). The group for the tier they're on right now starts
+// open; click a row to expand the full problem, their answer, the correct
+// one and the explanation. Problems that have since been deleted from the
+// bank show just their ID, as on the Teacher tab.
+// ---------------------------------------------------------------------------
+function StudentHistoryModal({ history, itemBanks, currentTopic, currentTier, onClose }) {
+  const [openGroups, setOpenGroups] = useState(() => new Set([`${currentTopic}|${currentTier}`]));
+  const [openRows, setOpenRows] = useState(() => new Set());
+  const [missedOnly, setMissedOnly] = useState(false);
+
+  const itemsById = new Map();
+  for (const bank of itemBanks) for (const it of bank) if (!itemsById.has(it.id)) itemsById.set(it.id, it);
+
+  const groupMap = new Map();
+  (history || []).forEach((h, idx) => {
+    const key = `${h.topic}|${h.tier}`;
+    if (!groupMap.has(key)) groupMap.set(key, { key, topic: h.topic, tier: h.tier, entries: [], lastIdx: idx });
+    const g = groupMap.get(key);
+    g.entries.push({ h, idx });
+    g.lastIdx = idx;
+  });
+  const groups = [...groupMap.values()]
+    .map((g) => ({ ...g, missed: g.entries.filter((e) => !e.h.correct).length, entries: g.entries.slice().reverse() }))
+    .filter((g) => !missedOnly || g.missed > 0)
+    .sort((a, b) => b.lastIdx - a.lastIdx);
+
+  const toggle = (setter, key) => setter((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 max-w-lg w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">Your history</h3>
+          <button onClick={onClose} title="Close" className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><X size={18} /></button>
+        </div>
+        <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+          <label className="inline-flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 cursor-pointer">
+            <input type="checkbox" checked={missedOnly} onChange={(e) => setMissedOnly(e.target.checked)} /> Show only missed
+          </label>
+        </div>
+        <div className="overflow-y-auto p-4 flex flex-col gap-3">
+          {(history || []).length === 0 ? (
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">No answers yet.</p>
+          ) : groups.length === 0 ? (
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">No missed problems -- nice work.</p>
+          ) : groups.map((g) => {
+            const isOpen = openGroups.has(g.key);
+            const shown = missedOnly ? g.entries.filter((e) => !e.h.correct) : g.entries;
+            return (
+              <div key={g.key} className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <button onClick={() => toggle(setOpenGroups, g.key)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  {isOpen ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Topic {g.topic}{TOPIC_LABELS[g.topic] ? ` · ${TOPIC_LABELS[g.topic]}` : ""}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded border font-mono ${TIER_COLORS[g.tier]}`}>{TIER_LABELS[g.tier]}</span>
+                  <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 shrink-0">{g.entries.length} answered{g.missed > 0 ? ` · ${g.missed} missed` : ""}</span>
+                </button>
+                {isOpen && (
+                  <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2 flex flex-col gap-1">
+                    {shown.map(({ h, idx }) => {
+                      const item = itemsById.get(h.itemId);
+                      const rowOpen = openRows.has(idx);
+                      return (
+                        <div key={idx} className="rounded-md">
+                          <button disabled={!item} onClick={() => toggle(setOpenRows, idx)}
+                            className={`w-full flex items-center gap-2 text-xs text-left px-1 py-1 rounded-md ${item ? "hover:bg-white dark:hover:bg-slate-900 cursor-pointer" : "cursor-default"}`}>
+                            {h.correct ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" /> : <XCircle size={14} className="text-rose-500 shrink-0" />}
+                            <span className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-slate-500 dark:text-slate-400">{h.topic}</span>
+                            <span className={`px-1.5 py-0.5 rounded border font-mono ${TIER_COLORS[h.tier]}`}>{TIER_LABELS[h.tier]}</span>
+                            <span className="text-slate-500 dark:text-slate-400 truncate flex-1">{item ? item.prompt.split("\n")[0] : h.itemId}</span>
+                            {item && (rowOpen ? <ChevronDown size={12} className="text-slate-400 shrink-0" /> : <ChevronRight size={12} className="text-slate-400 shrink-0" />)}
+                          </button>
+                          {item && rowOpen && (
+                            <div className="mt-1 mb-2 mx-1 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                              <p className="text-sm text-slate-800 dark:text-slate-100 mb-3 whitespace-pre-wrap">{item.prompt}</p>
+                              <div className="flex flex-col gap-1.5 mb-3">
+                                {item.choices.map((choice, i) => {
+                                  const isCorrect = i === item.answer;
+                                  const isChosen = h.chosen === i;
+                                  let style = "border-slate-200 dark:border-slate-700";
+                                  if (isCorrect) style = "border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-950";
+                                  else if (isChosen) style = "border-rose-400 dark:border-rose-600 bg-rose-50 dark:bg-rose-950";
+                                  return (
+                                    <div key={i} className={`px-3 py-2 rounded-lg border ${style} text-sm flex items-start gap-2`}>
+                                      {isCorrect && <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />}
+                                      {isChosen && !isCorrect && <XCircle size={14} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />}
+                                      <span className="whitespace-pre-wrap">{choice}</span>
+                                      {isChosen && <span className="ml-auto text-[10px] text-slate-400 dark:text-slate-500 shrink-0 mt-0.5">your answer</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {item.explanation && (
+                                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300">{item.explanation}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank, onItemBankChange }) {
   const [students, setStudents] = useState({});
   const [loading, setLoading] = useState(true);
