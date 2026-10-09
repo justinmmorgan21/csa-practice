@@ -1293,7 +1293,7 @@ function StudentHistoryModal({ history, itemBanks, currentTopic, currentTier, on
             <input type="checkbox" checked={missedOnly} onChange={(e) => setMissedOnly(e.target.checked)} /> Show only missed
           </label>
         </div>
-        <div className="overflow-y-auto p-4 flex flex-col gap-3">
+        <div className="overflow-y-auto min-h-0 p-4 flex flex-col gap-3">
           {(history || []).length === 0 ? (
             <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">No answers yet.</p>
           ) : groups.length === 0 ? (
@@ -1302,7 +1302,7 @@ function StudentHistoryModal({ history, itemBanks, currentTopic, currentTier, on
             const isOpen = openGroups.has(g.key);
             const shown = missedOnly ? g.entries.filter((e) => !e.h.correct) : g.entries;
             return (
-              <div key={g.key} className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div key={g.key} className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <button onClick={() => toggle(setOpenGroups, g.key)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   {isOpen ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Topic {g.topic}{TOPIC_LABELS[g.topic] ? ` · ${TOPIC_LABELS[g.topic]}` : ""}</span>
