@@ -432,10 +432,19 @@ function emptyStudent(displayName, course, idTag = null) {
   };
 }
 
-// Backfills a PIN for any student record created before PINs existed.
-function ensurePin(data) {
-  if (data && !data.pin) data.pin = generatePin();
-  return data;
+// The verifyStudentPin Cloud Function creates a bare placeholder (just a PIN
+// and name) when someone tries a PIN for a student who has no record yet.
+// Anything that reads student records expects the full shape, so fill in
+// whatever's missing -- keeping the record's own PIN/name/ID -- and return
+// the same object untouched if it's already complete.
+function completeStudentRecord(raw, entry, course) {
+  if (raw.pin && Array.isArray(raw.history) && Array.isArray(raw.masteredTopics)) return raw;
+  const fresh = emptyStudent(entry.name, course, entry.idTag);
+  const merged = { ...fresh, ...raw, pin: raw.pin || fresh.pin, displayName: raw.displayName || entry.name, idTag: raw.idTag ?? entry.idTag ?? null };
+  if (!Array.isArray(merged.history)) merged.history = [];
+  if (!Array.isArray(merged.masteredTopics)) merged.masteredTopics = [];
+  delete merged._placeholder;
+  return merged;
 }
 
 function accuracy(history) {
@@ -638,6 +647,7 @@ function StudentView({ course, section, roster, itemBank, reviewItemBank }) {
   const loadUnlockedStudent = useCallback(async (entry) => {
     const slug = rosterSlug(entry);
     let data = await loadStudentRaw(course, section, slug);
+    if (data) data = completeStudentRecord(data, entry, course);
     if (data && data.inProgressRound) {
       const ip = data.inProgressRound;
       // A CS3 student's in-progress round could belong to their "AP CS A
@@ -1494,7 +1504,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
         const slug = rosterSlug(entry);
         let raw = await loadStudentRaw(course, section, slug);
         if (!raw) { raw = emptyStudent(entry.name, course, entry.idTag); await saveStudent(course, section, slug, raw); }
-        else if (!raw.pin) { raw = ensurePin(raw); await saveStudent(course, section, slug, raw); }
+        else {
+          const completed = completeStudentRecord(raw, entry, course);
+          if (completed !== raw) { raw = completed; await saveStudent(course, section, slug, raw); }
+        }
         return [slug, raw];
       })
     );
@@ -1509,7 +1522,10 @@ function TeacherView({ course, section, roster, onRosterChange, onLock, itemBank
     setDeletedLoading(true);
     const names = await loadDeletedRoster(course, section);
     const entries = await Promise.all(
-      names.map(async (entry) => [rosterSlug(entry), await loadStudentRaw(course, section, rosterSlug(entry))])
+      names.map(async (entry) => {
+        const raw = await loadStudentRaw(course, section, rosterSlug(entry));
+        return [rosterSlug(entry), raw ? completeStudentRecord(raw, entry, course) : raw];
+      })
     );
     setDeletedRoster(names);
     setDeletedStudents(Object.fromEntries(entries));
