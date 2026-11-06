@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { loadRoster, saveRoster, loadStudentRaw, saveStudent, deleteStudent, verifyStudentPin, loadDeletedRoster, saveDeletedRoster } from "./storage";
 import { checkTeacherPasswordExists, setInitialTeacherPassword, verifyTeacherPassword, changeTeacherPassword } from "./auth";
+import { setAuthRole, dropSession } from "./authClient";
 import { extractPdfText, parseRosterText, buildProposedRoster } from "./rosterParser";
 import { getReview } from "./reviews";
 import { loadAllContent, saveSegmentItems } from "./contentStore";
@@ -2852,10 +2853,10 @@ export default function App() {
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <div className="flex gap-1 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1">
-              <button onClick={() => setMode("student")} className={`px-3 py-1.5 rounded-md text-sm font-medium inline-flex items-center gap-1.5 transition-colors ${mode === "student" ? "bg-indigo-600 dark:bg-indigo-500 text-white" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+              <button onClick={() => { setAuthRole("student"); setMode("student"); }} className={`px-3 py-1.5 rounded-md text-sm font-medium inline-flex items-center gap-1.5 transition-colors ${mode === "student" ? "bg-indigo-600 dark:bg-indigo-500 text-white" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                 <GraduationCap size={15} /> Student
               </button>
-              <button onClick={() => setMode("teacher")} className={`px-3 py-1.5 rounded-md text-sm font-medium inline-flex items-center gap-1.5 transition-colors ${mode === "teacher" ? "bg-indigo-600 dark:bg-indigo-500 text-white" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+              <button onClick={() => { setAuthRole("teacher"); setMode("teacher"); }} className={`px-3 py-1.5 rounded-md text-sm font-medium inline-flex items-center gap-1.5 transition-colors ${mode === "teacher" ? "bg-indigo-600 dark:bg-indigo-500 text-white" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                 <Users size={15} /> Teacher
               </button>
             </div>
@@ -2873,7 +2874,7 @@ export default function App() {
         ) : !teacherAuthed ? (
           <TeacherGate onUnlock={() => setTeacherAuthed(true)} />
         ) : (
-          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} onLock={() => setTeacherAuthed(false)} itemBank={itemBank} onItemBankChange={setItemBank} />
+          <TeacherView course={course} section={section} roster={roster} onRosterChange={setRoster} onLock={() => { dropSession("teacher"); setTeacherAuthed(false); }} itemBank={itemBank} onItemBankChange={setItemBank} />
         )}
       </div>
     </div>

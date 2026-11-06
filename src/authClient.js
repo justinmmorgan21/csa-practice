@@ -42,8 +42,27 @@ const FUNCTIONS_BASE = `https://${FUNCTIONS_REGION}-${PROJECT_ID}.cloudfunctions
 // classroom computers, so every full page reload starting over with no
 // lingering "teacher" or "student" claim is the safer default (it matches
 // how the app already requires re-entering a PIN/password after a reload).
-let session = null; // { idToken, refreshToken, expiresAt, uid }
-let signInPromise = null;
+//
+// The Teacher and Student tabs each get their OWN anonymous identity. A
+// custom claim replaces whatever claim the identity had before, so with one
+// shared identity a successful student PIN check silently wiped the
+// teacher's access in the same browser tab -- the Teacher tab still looked
+// unlocked, but every save was rejected (and swallowed). setAuthRole() picks
+// which identity the requests below use; App calls it when the tab changes.
+const sessions = { student: null, teacher: null }; // each { idToken, refreshToken, expiresAt, uid }
+const signInPromises = { student: null, teacher: null };
+let activeRole = "student";
+
+export function setAuthRole(role) {
+  activeRole = role === "teacher" ? "teacher" : "student";
+}
+
+// Throws away a role's identity (and so its claim) -- used by the Teacher
+// tab's Lock button, so locking actually drops teacher access instead of
+// just hiding the screen. The next use signs in fresh.
+export function dropSession(role) {
+  sessions[role] = null;
+}
 
 async function signInAnonymously() {
   const res = await fetch(`${AUTH_BASE}/accounts:signUp?key=${API_KEY}`, {
@@ -77,11 +96,11 @@ async function refreshSession(refreshToken) {
   };
 }
 
-async function ensureSession() {
-  if (session) return session;
-  if (!signInPromise) signInPromise = signInAnonymously().finally(() => { signInPromise = null; });
-  session = await signInPromise;
-  return session;
+async function ensureSession(role) {
+  if (sessions[role]) return sessions[role];
+  if (!signInPromises[role]) signInPromises[role] = signInAnonymously().finally(() => { signInPromises[role] = null; });
+  sessions[role] = await signInPromises[role];
+  return sessions[role];
 }
 
 // Call this right after a Cloud Function reports a successful PIN/password
@@ -91,17 +110,19 @@ async function ensureSession() {
 // token presented with each request, so without this refresh the very next
 // Firestore read would still look unauthorized.
 export async function refreshClaims() {
-  const current = await ensureSession();
-  session = await refreshSession(current.refreshToken);
+  const role = activeRole;
+  const current = await ensureSession(role);
+  sessions[role] = await refreshSession(current.refreshToken);
 }
 
 async function getIdToken() {
-  const current = await ensureSession();
+  const role = activeRole;
+  const current = await ensureSession(role);
   // Refresh a little early (60s of slack) rather than waiting for an
   // in-flight request to get rejected by an already-expired token.
   if (Date.now() > current.expiresAt - 60000) {
-    session = await refreshSession(current.refreshToken);
-    return session.idToken;
+    sessions[role] = await refreshSession(current.refreshToken);
+    return sessions[role].idToken;
   }
   return current.idToken;
 }
