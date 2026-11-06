@@ -2,7 +2,7 @@
   "name": "csa-practice-functions",
   "description": "Server-side PIN/password verification for the AP CSA practice app -- moves secret checks off the client so raw PINs and password hashes are never sent to the browser, and adds attempt-based lockout that Firestore rules alone can't do.",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
